@@ -516,6 +516,10 @@ tbody tr:last-child td {
     padding-top: 12px;
   }
 
+  .suite-topbar-actions {
+    display: none;
+  }
+
   .graph-surface {
     min-height: auto;
     padding: 15px;
@@ -533,6 +537,10 @@ tbody tr:last-child td {
   .latest-strip {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .latest-strip.is-boundary {
+    grid-template-columns: 1fr;
   }
 
   .latest-strip strong {
