@@ -2,6 +2,7 @@ package io.aolabs.bloodbridge
 
 import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.records.MealType
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -140,10 +141,10 @@ object BloodBridgeSync {
 
     private fun mealTypeName(type: Int): String {
         return when (type) {
-            BloodGlucoseRecord.MEAL_TYPE_BREAKFAST -> "breakfast"
-            BloodGlucoseRecord.MEAL_TYPE_LUNCH -> "lunch"
-            BloodGlucoseRecord.MEAL_TYPE_DINNER -> "dinner"
-            BloodGlucoseRecord.MEAL_TYPE_SNACK -> "snack"
+            MealType.MEAL_TYPE_BREAKFAST -> "breakfast"
+            MealType.MEAL_TYPE_LUNCH -> "lunch"
+            MealType.MEAL_TYPE_DINNER -> "dinner"
+            MealType.MEAL_TYPE_SNACK -> "snack"
             else -> ""
         }
     }
