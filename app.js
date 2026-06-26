@@ -1,6 +1,7 @@
 const syncLine = document.getElementById("sync-line");
 const refreshButton = document.getElementById("refresh-button");
 const latestValue = document.getElementById("latest-value");
+const latestUnit = document.getElementById("latest-unit");
 const latestTime = document.getElementById("latest-time");
 const latestSource = document.getElementById("latest-source");
 const rangeSummary = document.getElementById("range-summary");
@@ -197,9 +198,12 @@ function renderTable(data) {
 function renderData(data) {
   latestData = data;
   if (!data?.latest) {
-    latestValue.textContent = "--";
+    latestValue.textContent = "waiting";
+    latestUnit.textContent = "";
     latestTime.textContent = "No readings yet.";
     latestSource.textContent = "Waiting for Contour data.";
+    rangeSummary.textContent = "No data";
+    rangeDetail.textContent = "Selected range.";
     syncLine.textContent = data?.message || "Contour readings sync here after the bridge or CSV import sends data.";
     renderBoundary(
       "No readings synced.",
@@ -211,6 +215,7 @@ function renderData(data) {
 
   const latest = data.latest;
   latestValue.textContent = latest.valueMgDl;
+  latestUnit.textContent = "mg/dL";
   latestTime.textContent = formatDateTime(latest.measuredAt);
   latestSource.textContent = sourceLabel(latest);
   syncLine.textContent = data.lastCapturedAt
