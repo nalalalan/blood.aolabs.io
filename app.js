@@ -89,10 +89,10 @@ function renderChart(data) {
   }
 
   const narrow = window.innerWidth <= 760;
-  const width = narrow ? 620 : 920;
+  const width = narrow ? 560 : 920;
   const height = narrow ? 420 : 430;
   const pad = narrow
-    ? { top: 34, right: 32, bottom: 50, left: 46 }
+    ? { top: 34, right: 70, bottom: 50, left: 46 }
     : { top: 30, right: 54, bottom: 54, left: 56 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
@@ -152,6 +152,9 @@ function renderChart(data) {
   const latest = points[points.length - 1];
   const latestX = xFor(new Date(latest.measuredAt).getTime());
   const latestY = yFor(latest.valueMgDl);
+  const latestLabelOnLeft = latestX > width - (narrow ? 120 : 132);
+  const latestLabelX = latestLabelOnLeft ? latestX - 14 : latestX + 13;
+  const latestLabelAnchor = latestLabelOnLeft ? "end" : "start";
   const bandTop = Math.min(yFor(180), yFor(70));
   const bandBottom = Math.max(yFor(180), yFor(70));
 
@@ -166,7 +169,7 @@ function renderChart(data) {
       ${circles}
       <g class="latest-marker">
         <circle cx="${latestX.toFixed(1)}" cy="${latestY.toFixed(1)}" r="8"></circle>
-        <text x="${Math.min(width - 92, latestX + 13).toFixed(1)}" y="${(latestY - 10).toFixed(1)}">${latest.valueMgDl}</text>
+        <text x="${latestLabelX.toFixed(1)}" y="${(latestY - 10).toFixed(1)}" text-anchor="${latestLabelAnchor}">${latest.valueMgDl}</text>
       </g>
       <text class="axis-label" x="${pad.left}" y="18">blood glucose</text>
     </svg>
