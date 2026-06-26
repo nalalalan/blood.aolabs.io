@@ -213,11 +213,16 @@ h2 {
 }
 
 #refresh-button,
-.range-controls button {
+.range-controls button,
+.download-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffaf2;
   color: var(--ink);
+}
+
+#refresh-button,
+.range-controls button {
   cursor: pointer;
 }
 
@@ -225,6 +230,18 @@ h2 {
   min-width: 94px;
   padding: 10px 14px;
   font-weight: 720;
+}
+
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  margin-top: 14px;
+  padding: 9px 13px;
+  background: var(--blood);
+  color: #fffaf2;
+  font-weight: 760;
+  text-decoration: none;
 }
 
 #refresh-button:disabled {

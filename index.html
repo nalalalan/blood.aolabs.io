@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260626-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260626-v2">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -117,18 +117,19 @@
 
     <section class="sync-section" id="sync" aria-labelledby="sync-title">
       <div>
-        <h2 id="sync-title">Sync path</h2>
-        <p>Contour can fill Blood through Health Connect when glucose records are available there. CSV import is the fallback when Contour does not write those records on this phone.</p>
+        <h2 id="sync-title">Phone bridge</h2>
+        <p>Install the bridge on the Android phone with Contour. Android 14+ opens Health Connect from Settings, not always from an app icon.</p>
+        <a class="download-link" href="./downloads/blood-bridge.apk" download>Download Blood Bridge APK</a>
       </div>
       <div class="sync-steps" aria-label="sync setup">
-        <span>Contour app has readings</span>
-        <span>Health Connect glucose permission or CSV export</span>
-        <span>Blood API ingest token</span>
-        <span>Graph refresh</span>
+        <span>Contour reading synced on phone</span>
+        <span>Settings -> Security and privacy -> Privacy Controls -> Health Connect</span>
+        <span>Blood Bridge installed with ingest token</span>
+        <span>Sync last 90 days</span>
       </div>
     </section>
   </main>
 
-  <script src="./app.js?v=20260626-v1" defer></script>
+  <script src="./app.js?v=20260626-v2" defer></script>
 </body>
 </html>
