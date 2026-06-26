@@ -1,0 +1,21 @@
+{
+  "name": "blood-aolabs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AO Labs blood glucose record populated from Contour exports or consented Health Connect glucose records.",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "serve": "node server.js",
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pg": "^8.13.1"
+  }
+}

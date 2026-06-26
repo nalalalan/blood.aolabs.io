@@ -1,0 +1,7 @@
+node_modules/
+data/
+.env
+.railway/
+*.log
+connectors/health-connect-bridge/.gradle/
+connectors/health-connect-bridge/app/build/

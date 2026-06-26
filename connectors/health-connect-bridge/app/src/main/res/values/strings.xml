@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Blood Bridge</string>
+    <string name="health_permission_rationale">Blood Bridge reads Health Connect blood glucose records and sends them to blood.aolabs.io after setup, including periodic background sync.</string>
+</resources>

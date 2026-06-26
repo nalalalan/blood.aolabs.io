@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>blood.aolabs.io</title>
+  <meta name="description" content="Blood glucose graph from Contour or consented Health Connect readings.">
+  <link rel="canonical" href="https://blood.aolabs.io/">
+  <meta name="theme-color" content="#f7f4ee">
+  <meta name="color-scheme" content="light">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AO Labs">
+  <meta property="og:title" content="blood">
+  <meta property="og:description" content="A clear blood glucose graph from Contour readings.">
+  <meta property="og:url" content="https://blood.aolabs.io/">
+  <meta property="og:image" content="https://aolabs.io/previews/blood-20260626.png">
+  <meta property="og:image:secure_url" content="https://aolabs.io/previews/blood-20260626.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="blood preview card.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="blood">
+  <meta name="twitter:description" content="A clear blood glucose graph from Contour readings.">
+  <meta name="twitter:image" content="https://aolabs.io/previews/blood-20260626.png">
+  <meta name="twitter:image:alt" content="blood preview card.">
+  <meta name="blood-api-base" content="">
+  <script>
+    if (location.hostname === "blood.aolabs.io" && location.protocol === "http:") {
+      location.replace(`https://blood.aolabs.io/${location.search}${location.hash}`);
+    }
+  </script>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css?v=20260626-v1">
+</head>
+<body>
+  <header class="suite-topbar" aria-label="blood navigation">
+    <div class="suite-brand-cluster">
+      <a class="suite-ao-home" href="https://aolabs.io/" aria-label="aolabs.io">
+        <img src="./marks/ao-ink.svg" alt="">
+      </a>
+      <a class="suite-app-brand" href="./" aria-label="blood home">
+        <img class="suite-app-mark" src="./icon.svg" alt="">
+        <span class="suite-app-name">blood</span>
+      </a>
+    </div>
+    <nav class="suite-topbar-actions" aria-label="blood actions">
+      <a href="#readings" aria-label="readings"><span class="readings-icon" aria-hidden="true"></span></a>
+      <a href="#sync" aria-label="sync"><span class="sync-icon" aria-hidden="true"></span></a>
+    </nav>
+  </header>
+
+  <main class="shell">
+    <section class="graph-surface" aria-labelledby="blood-title">
+      <div class="surface-head">
+        <div>
+          <h1 id="blood-title">Blood glucose</h1>
+          <p id="sync-line">Contour readings sync here after the bridge or CSV import sends data.</p>
+        </div>
+        <button id="refresh-button" type="button">Refresh</button>
+      </div>
+
+      <div class="latest-strip" aria-label="latest glucose state">
+        <div class="latest-value">
+          <span id="latest-value">--</span>
+          <small>mg/dL</small>
+        </div>
+        <div>
+          <strong id="latest-time">No readings yet.</strong>
+          <span id="latest-source">Waiting for Contour data.</span>
+        </div>
+        <div>
+          <strong id="range-summary">--</strong>
+          <span id="range-detail">Selected range.</span>
+        </div>
+      </div>
+
+      <div class="range-controls" aria-label="graph range">
+        <button type="button" data-range="1">24h</button>
+        <button type="button" data-range="7" class="is-active">7d</button>
+        <button type="button" data-range="30">30d</button>
+        <button type="button" data-range="all">All</button>
+      </div>
+
+      <div class="chart-frame">
+        <div id="chart" class="chart" role="img" aria-label="blood glucose graph"></div>
+      </div>
+      <div class="chart-note">
+        <span>mg/dL</span>
+        <span>Reference band is shown only as a plotting aid.</span>
+      </div>
+    </section>
+
+    <section class="readings-section" id="readings" aria-labelledby="readings-title">
+      <div class="section-head">
+        <h2 id="readings-title">Latest readings</h2>
+        <span id="record-count">0 readings</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">mg/dL</th>
+              <th scope="col">Marker</th>
+              <th scope="col">Source</th>
+            </tr>
+          </thead>
+          <tbody id="readings-body">
+            <tr><td colspan="4">No readings loaded.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="sync-section" id="sync" aria-labelledby="sync-title">
+      <div>
+        <h2 id="sync-title">Sync path</h2>
+        <p>Contour can fill Blood through Health Connect when glucose records are available there. CSV import is the fallback when Contour does not write those records on this phone.</p>
+      </div>
+      <div class="sync-steps" aria-label="sync setup">
+        <span>Contour app has readings</span>
+        <span>Health Connect glucose permission or CSV export</span>
+        <span>Blood API ingest token</span>
+        <span>Graph refresh</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="./app.js?v=20260626-v1" defer></script>
+</body>
+</html>

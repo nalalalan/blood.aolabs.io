@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="aolabs.io">
+  <defs>
+    <radialGradient id="disc" cx="38%" cy="30%" r="78%">
+      <stop offset="0" stop-color="#fffdf9"/>
+      <stop offset=".52" stop-color="#fff0df"/>
+      <stop offset="1" stop-color="#f2d3b8"/>
+    </radialGradient>
+    <filter id="lift" x="-14%" y="-12%" width="128%" height="132%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#b98163" flood-opacity=".18"/>
+    </filter>
+    <filter id="markShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#765140" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <circle cx="64" cy="64" r="61" fill="url(#disc)" filter="url(#lift)"/>
+  <g filter="url(#markShadow)">
+    <rect x="34" y="34" width="27" height="27" rx="7" fill="#7fa9dc"/>
+    <rect x="67" y="34" width="27" height="27" rx="7" fill="#e5b84f"/>
+    <rect x="34" y="67" width="27" height="27" rx="7" fill="#70b99d"/>
+    <rect x="67" y="67" width="27" height="27" rx="7" fill="#df8876"/>
+    <path d="M64 36v56M36 64h56" fill="none" stroke="#fff8ec" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="64" cy="64" r="7.8" fill="#6b4f45"/>
+    <circle cx="64" cy="64" r="3.2" fill="#fff8ec"/>
+  </g>
+</svg>
