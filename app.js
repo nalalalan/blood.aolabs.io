@@ -7,6 +7,7 @@ const latestSource = document.getElementById("latest-source");
 const rangeSummary = document.getElementById("range-summary");
 const rangeDetail = document.getElementById("range-detail");
 const chart = document.getElementById("chart");
+const latestStrip = document.querySelector(".latest-strip");
 const readingsBody = document.getElementById("readings-body");
 const recordCount = document.getElementById("record-count");
 const rangeButtons = Array.from(document.querySelectorAll("[data-range]"));
@@ -82,7 +83,7 @@ function renderChart(data) {
       "Waiting for readings.",
       "No readings exist in the selected range."
     );
-    rangeSummary.textContent = "--";
+    rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
     return;
   }
@@ -198,7 +199,8 @@ function renderTable(data) {
 function renderData(data) {
   latestData = data;
   if (!data?.latest) {
-    latestValue.textContent = "waiting";
+    latestStrip.classList.add("is-boundary");
+    latestValue.textContent = "No data";
     latestUnit.textContent = "";
     latestTime.textContent = "No readings yet.";
     latestSource.textContent = "Waiting for Contour data.";
@@ -214,6 +216,7 @@ function renderData(data) {
   }
 
   const latest = data.latest;
+  latestStrip.classList.remove("is-boundary");
   latestValue.textContent = latest.valueMgDl;
   latestUnit.textContent = "mg/dL";
   latestTime.textContent = formatDateTime(latest.measuredAt);

@@ -243,6 +243,10 @@ h2 {
   background: linear-gradient(135deg, rgba(159, 48, 65, .08), rgba(73, 123, 120, .05));
 }
 
+.latest-strip.is-boundary {
+  grid-template-columns: minmax(150px, .8fr) minmax(0, 1.3fr) minmax(0, 1fr);
+}
+
 .latest-strip > div {
   min-width: 0;
 }
@@ -266,6 +270,11 @@ h2 {
   line-height: .86;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.latest-strip.is-boundary .latest-value span {
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1;
 }
 
 .latest-value small {
