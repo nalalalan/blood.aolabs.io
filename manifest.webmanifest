@@ -9,7 +9,7 @@
   "theme_color": "#8d2f3f",
   "icons": [
     {
-      "src": "./icon.svg",
+      "src": "./icon.svg?v=20260627-meter-strip",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
