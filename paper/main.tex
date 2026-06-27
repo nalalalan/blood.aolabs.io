@@ -131,7 +131,7 @@
 \end{center}
 
 \vspace{0.35em}
-\noindent\textbf{Blood is a private personal health record that turns automatic CONTOUR NEXT ONE glucose readings and phone-derived health signals into one visible stabilization score and five aligned source graphs. The anxiety estimate is not a diagnosis and does not infer mental state from a model trained on other people. It is a deterministic, source-bounded index calculated from current glucose, heart rate, heart-rate variability (HRV), sleep, and steps. The score starts from a neutral personal baseline, adds positive weight for physiologic states that can feel like stress or reduce recovery, subtracts weight for steady source states, scales the result to a one-decimal 1--10 display, and selects one current-block more/less adjustment from the strongest current outlier. When Health Connect does not expose true RMSSD HRV, Blood marks HRV as estimated and computes it only from dense, low-noise sleep or resting heart-rate windows. A live read on June 27, 2026 at 3:11 PM ET produced a 4.4/10 score from 120 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV, 431 minutes asleep, and 14,764 recent steps. The system is therefore a transparent self-monitoring surface: every score can be reconstructed from the source values and rule table.}
+\noindent\textbf{Blood is a private personal health record that turns automatic CONTOUR NEXT ONE glucose readings and phone-derived health signals into one visible stabilization score and five aligned source graphs. The anxiety estimate is not a diagnosis and does not infer mental state from a model trained on other people. It is a deterministic, source-bounded index calculated from current glucose, heart rate, heart-rate variability (HRV), sleep, and steps. The score starts from a neutral personal baseline, adds positive weight for physiologic states that can feel like stress or reduce recovery, subtracts weight for steady source states, scales the result to a one-decimal 1--10 display, and selects one current-block more/less adjustment from the strongest current outlier. When Health Connect does not expose true RMSSD HRV, Blood marks HRV as estimated and computes it only from dense, low-noise sleep or resting heart-rate windows. A live read on June 27, 2026 at 6:13 PM ET produced a 4.4/10 score from 82 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV, 431 minutes asleep, and 13,028 recent steps. The system is therefore a transparent self-monitoring surface: every score can be reconstructed from the source values and rule table.}
 
 \newpage
 \pagestyle{fancy}
@@ -142,7 +142,7 @@ Many personal health apps show glucose, sleep, heart rate, or activity as separa
 
 The score is intentionally called an anxiety estimate rather than an anxiety diagnosis. Blood does not classify psychiatric anxiety, does not use population diagnosis labels, and does not claim that one biomarker proves a mental state. The implementation uses physiologic signals only as personal stabilization evidence. Low blood glucose can produce adrenergic symptoms such as fast heartbeat, shaking, sweating, nervousness, or anxiety~\cite{cdc2024hypoglycemia}. HRV standards define variability from beat-to-beat RR intervals and distinguish true HRV measurement from looser heart-rate summaries~\cite{taskforce1996hrv}. Reduced HRV is associated with anxiety disorders in meta-analytic literature, but the effect is group-level and not sufficient for diagnosing an individual state~\cite{chalmers2014anxiety}. Blood therefore treats HRV as one recovery signal among several, not as a standalone mental-health label.
 
-The data path is also bounded. Android Health Connect exposes categories such as activity, sleep, vitals, and blood glucose, and Samsung Health can share selected Samsung Health data through Health Connect~\cite{androidhealthconnect2026,samsunghealthconnect2025}. In the current Blood deployment, glucose reaches the server from a Blood Bridge path connected to the CONTOUR NEXT ONE meter, while heart rate, sleep, and steps come from Health Connect records written by the phone or wearable. When a source does not provide true HRV, Blood computes a labeled proxy from heart-rate samples only when the sample geometry is strong enough to make the estimate useful.
+The data path is also bounded. Android Health Connect exposes categories such as activity, sleep, vitals, and blood glucose, and Samsung Health can share selected Samsung Health data through Health Connect~\cite{androidhealthconnect2026,samsunghealthconnect2025}. In the current Blood deployment, glucose reaches the server from a Blood Bridge path connected to the CONTOUR NEXT ONE meter, while heart rate, sleep, and steps come from Health Connect records written by the phone or wearable. The bridge reads Health Connect records in pages and the chart header shows the source measurement time, so a recent bridge upload cannot make an older heart-rate sample look current. When a source does not provide true HRV, Blood computes a labeled proxy from heart-rate samples only when the sample geometry is strong enough to make the estimate useful.
 
 \section{Results}
 
@@ -189,23 +189,23 @@ This additive design is deliberately small. A glucose crash, very short sleep, h
 
 \subsection{The live score has a full audit trail}
 
-Table~\ref{tab:live_snapshot} reconstructs the live Blood score checked on June 27, 2026 at 3:11 PM ET. The current score is not a black-box output. It is the arithmetic sum of five visible source states.
+Table~\ref{tab:live_snapshot} reconstructs the live Blood score checked on June 27, 2026 at 6:13 PM ET. The current score is not a black-box output. It is the arithmetic sum of five visible source states.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Live score reconstruction from the Blood summary API on June 27, 2026 at 3:11 PM ET.}
+\caption{Live score reconstruction from the Blood summary API on June 27, 2026 at 6:13 PM ET.}
 \label{tab:live_snapshot}
 \begin{tabular}{p{0.26\textwidth}p{0.44\textwidth}r}
 \toprule
 Term & Source state & Raw contribution \\
 \midrule
 Baseline & Personal neutral starting point & +2.20 \\
-Glucose & 120 mg/dL, inside the target band & -0.15 \\
-Heart rate & 68 bpm, inside the calm band & -0.15 \\
-Estimated HRV & 12 ms estimated HRV, below 25 ms & +0.80 \\
+Glucose & 82 mg/dL, inside the target band & -0.15 \\
+Heart rate & 68 bpm, inside the calm band; source sample 1:50 PM ET & -0.15 \\
+Estimated HRV & 12 ms estimated HRV, below 25 ms; estimate timestamp 4:04 AM ET & +0.80 \\
 Sleep & 431 minutes asleep, at least 420 minutes & -0.25 \\
-Steps & 14,764 recent steps, at least 8,000 & -0.25 \\
+Steps & 13,028 recent steps, at least 8,000 & -0.25 \\
 \midrule
 Raw total & $2.20 - 0.15 - 0.15 + 0.80 - 0.25 - 0.25$ & 2.20 \\
 Visible score & $2 \times 2.20$, clamped and rounded & 4.4/10 \\
@@ -231,7 +231,7 @@ It then computes an RMSSD-like proxy over adjacent RR differences:
 
 The current estimator rejects weak windows before producing a value. It deduplicates heart-rate records by timestamp, prefers points inside sleep windows when at least ten such points exist, otherwise searches resting windows, and evaluates 30-minute candidate windows. A candidate must contain at least ten points, at least eight adjacent pairs, a duration of at least eight minutes, no adjacent gap above three minutes, median heart rate no higher than 95 bpm, heart-rate standard deviation no higher than 9 bpm, and median adjacent heart-rate step no higher than 5 bpm. Blood ranks valid candidates by lower median heart rate, lower variability, smaller adjacent steps, and tighter sample gaps; it then takes the median HRV value across the best eight windows. The aggregate candidate set must provide at least 20 accepted pairs.
 
-This is stronger than a day-wide heart-rate swing, but it is still not the same as a chest-strap or ECG-grade beat-to-beat HRV record. The deployed API therefore carries \texttt{basis}, \texttt{quality}, \texttt{confidence}, sample count, pair count, median gap, selected-window count, and window length. The live value is 12 ms estimated from sleep heart-rate samples with 735 samples, 240 accepted pairs, eight selected windows, sleep-dense estimate quality, and highest-available-without-beat-intervals confidence.
+This is stronger than a day-wide heart-rate swing, but it is still not the same as a chest-strap or ECG-grade beat-to-beat HRV record. The deployed API therefore carries \texttt{basis}, \texttt{quality}, \texttt{confidence}, sample count, pair count, median gap, selected-window count, and window length. The live value is 12 ms estimated from sleep heart-rate samples with 735 samples, 240 accepted pairs, eight selected windows, sleep-dense estimate quality, and highest-available-without-beat-intervals confidence; its source timestamp is 4:04 AM ET, not a live RMSSD feed.
 
 \section{Discussion}
 
@@ -239,13 +239,13 @@ Blood's anxiety score is best understood as a personal stabilization index. It i
 
 The main design choice is transparency. The score can be computed by hand from the table. The front page shows the score first because that is the current state Alan asked to see, and it places the graphs immediately after the score because the graphs are the source audit. The same structure also keeps recommendations bounded. Blood selects the next suggestion from the strongest positive factor, not from a generated personality profile. The wording is deliberately simple: current time block plus one more/less adjustment. If low glucose is the strongest factor, Blood asks for carb plus protein more and empty-stomach work less. If heart rate is strongest, it asks for slow exhales or easy walking more and screen or phone checking less. If estimated HRV is strongest, it asks for food and water first more and task switching less. If sleep is short, it asks for small tasks more and heavy decisions less. If steps are low, it asks for walking more and sitting still less. The time label is not a delay instruction or learned pattern; it is only the current Eastern time block: morning, midday, afternoon, evening, or night.
 
-The strongest limitation is HRV. HRV is defined from beat-to-beat intervals, and sampled heart-rate records are a compressed derivative of that signal~\cite{taskforce1996hrv}. Blood reduces that problem by selecting dense sleep/rest windows and labeling the proxy, but the result remains a proxy. The second limitation is calibration. The current weights are personal, deterministic, and inspectable; they are not learned from a clinical dataset and have not been validated against symptom diaries. A future version should store Alan's own reported anxiety, caffeine, meal, medication, illness, and stressor context when he chooses to provide it, then evaluate whether the fixed weights should be changed.
+The strongest limitation is HRV. HRV is defined from beat-to-beat intervals, and sampled heart-rate records are a compressed derivative of that signal~\cite{taskforce1996hrv}. Blood reduces that problem by selecting dense sleep/rest windows and labeling the proxy, but the result remains a proxy. The second limitation is source freshness. A watch can monitor heart rate continuously while Health Connect still exposes the latest available shared sample later than the current clock time. Blood treats that as a source-bound stale state and shows the sample timestamp beside the chart value rather than inferring a newer value. The third limitation is calibration. The current weights are personal, deterministic, and inspectable; they are not learned from a clinical dataset and have not been validated against symptom diaries. A future version should store Alan's own reported anxiety, caffeine, meal, medication, illness, and stressor context when he chooses to provide it, then evaluate whether the fixed weights should be changed.
 
 \section{Materials and Methods}
 
 \subsection{System inputs}
 
-The Blood server stores glucose readings and health metrics separately. Glucose records include measured time, capture time, source, reading identifier, mg/dL value, relation to meal when available, and specimen source. The current automatic glucose path is the CONTOUR NEXT ONE meter bridge. Health metrics include heart rate, HRV when exposed, sleep sessions, and step windows. The public summary endpoint is \texttt{/api/blood/summary}; write endpoints require the Blood ingest token.
+The Blood server stores glucose readings and health metrics separately. Glucose records include measured time, capture time, source, reading identifier, mg/dL value, relation to meal when available, and specimen source. The current automatic glucose path is the CONTOUR NEXT ONE meter bridge. Health metrics include heart rate, HRV when exposed, sleep sessions, and step windows. Blood Bridge requests HRV permission when available, but missing HRV permission does not block heart-rate, sleep, or step uploads. Its recurring background worker reads a recent two-day Health Connect window and follows Health Connect pagination so dense Samsung heart-rate records can reach the Blood API in upload-sized batches. The public summary endpoint is \texttt{/api/blood/summary}; write endpoints require the Blood ingest token.
 
 \subsection{Score implementation}
 
@@ -257,7 +257,7 @@ The HRV trend function first keeps any source HRV records and marks them as sour
 
 \section{Acknowledgements}
 
-The paper records the current Blood implementation and Alan Pham's requested interface contract: the anxiety score belongs at the top of the page, the graphs follow immediately, and HRV must be labeled according to the strongest source basis available.
+The paper records the current Blood implementation and Alan Pham's requested interface contract: the anxiety score belongs at the top of the page, the graphs follow immediately, chart values carry source freshness, and HRV must be labeled according to the strongest source basis available.
 
 \section{Funding}
 
@@ -265,7 +265,7 @@ No external funding is associated with this software paper.
 
 \section{Author contributions}
 
-Alan N. Pham defined the application need, source preferences, scoring placement, and automatic-bridge requirements. Codex implemented the current paper and checked it against the deployed Blood source.
+Alan N. Pham defined the application need, source preferences, scoring placement, source-freshness requirement, and automatic-bridge requirements. Codex implemented the current paper and checked it against the deployed Blood source.
 
 \section{Competing interests}
 

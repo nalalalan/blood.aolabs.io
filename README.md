@@ -39,16 +39,16 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
 7. Keep the CONTOUR NEXT ONE near the phone after a reading.
 8. Open `https://blood.aolabs.io/`.
 
-Blood Bridge uses Android WorkManager background sync and queues an immediate background upload when automatic upload is started. It does not use a persistent foreground notification. Android may still delay invisible background work; when that happens, Blood shows the last upload time until the next worker run posts the stored meter and Health Connect records. `Run one upload check now` is diagnostic only; it is not the normal workflow.
+Blood Bridge uses Android WorkManager background sync and queues an immediate background upload when automatic upload is started. It does not use a persistent foreground notification. Android may still delay invisible background work; when that happens, Blood shows the last upload time until the next worker run posts the stored meter and Health Connect records. The recurring worker reads the recent Health Connect window in pages so dense Samsung heart-rate records are not dropped behind an old first batch. `Run one upload check now` is diagnostic only; it is not the normal workflow.
 
 Health Connect metrics:
 
 1. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
 2. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
-3. Confirm the phone has sources for heart rate, steps, and sleep.
+3. Confirm the phone has sources for heart rate, steps, sleep, and HRV if a true RMSSD source is available.
 4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
 
-HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from sleep/rest heart-rate samples and waits if the sample set is too thin or too noisy.
+HR should stay current when the watch or phone writes current heart-rate samples into Health Connect. Blood shows the source time beside the chart value so a recent upload cannot hide a stale wearable sample. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples and waits if the sample set is too thin or too noisy.
 
 ## Local
 

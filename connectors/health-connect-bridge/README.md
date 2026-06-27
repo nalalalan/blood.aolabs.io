@@ -18,10 +18,10 @@ Default endpoint:
 
 `https://blood.aolabs.io/api/ingest/glucose-readings`
 
-The released APK is preconfigured for the Blood upload endpoint. Background sync runs invisibly through WorkManager after permissions are granted and automatic upload is started. No persistent Blood Bridge notification is used. Android may delay invisible background work, so the website is the freshness source of truth.
+The released APK is preconfigured for the Blood upload endpoint. Background sync runs invisibly through WorkManager after permissions are granted and automatic upload is started. No persistent Blood Bridge notification is used. Android may delay invisible background work, so the website is the freshness source of truth. The recurring worker reads a recent Health Connect window in pages so dense Samsung heart-rate records are not lost behind an old first batch.
 
 Advanced diagnostics can override the glucose endpoint locally. The metrics endpoint is derived from that URL by replacing `/api/ingest/glucose-readings` with `/api/ingest/health-metrics`.
 
-On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. Grant Blood Bridge blood glucose, heart rate, steps, sleep, and background Health Connect access.
+On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. Grant Blood Bridge blood glucose, heart rate, HRV when available, steps, sleep, and background Health Connect access.
 
-True HRV is uploaded only when Health Connect exposes real RMSSD HRV records. Missing HRV permission does not block metric sync; Blood calculates a labeled estimate from sufficiently dense sleep/rest heart-rate samples.
+Heart rate stays current when Samsung Health or another source writes current heart-rate samples into Health Connect. Blood shows the sample time on the website so a recent bridge upload cannot hide stale source data. True HRV is uploaded only when Health Connect exposes real RMSSD HRV records. Missing HRV permission does not block metric sync; Blood calculates a labeled estimate from sufficiently dense sleep/rest heart-rate samples.

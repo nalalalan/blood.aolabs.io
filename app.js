@@ -54,6 +54,12 @@ function formatDateTime(value) {
   });
 }
 
+function metricStamp(metric, field = "measuredAt") {
+  const stamp = metric?.[field];
+  const formatted = stamp ? formatDateTime(stamp) : "";
+  return formatted ? `as of ${formatted}` : "";
+}
+
 function formatShortDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -147,6 +153,13 @@ function buildSeries(data) {
       ? `${formatNumber(latest.steps.value)} steps`
       : ""
   };
+  const currentStamps = {
+    glucose: metricStamp(latestGlucose),
+    "heart-rate": metricStamp(latest.heartRate),
+    hrv: latest.hrv ? `${hrvBasisLabel(latest.hrv)}${metricStamp(latest.hrv) ? ` · ${metricStamp(latest.hrv)}` : ""}` : "",
+    sleep: metricStamp(latest.sleep),
+    steps: metricStamp(latest.steps, "capturedAt")
+  };
   const withLatest = (points, latestMetric, valueMapper = (metric) => metric?.value) => {
     if (points.length || !latestMetric?.measuredAt) return points;
     const value = valueMapper(latestMetric);
@@ -164,6 +177,7 @@ function buildSeries(data) {
       unit: "mg/dL",
       empty: "Waiting for CONTOUR meter upload.",
       currentLabel: currentLabels.glucose,
+      currentStamp: currentStamps.glucose,
       reference: [70, 180],
       yFloor: 60,
       yCeil: 200,
@@ -180,6 +194,7 @@ function buildSeries(data) {
       unit: "bpm",
       empty: "Waiting for Health Connect heart rate.",
       currentLabel: currentLabels["heart-rate"],
+      currentStamp: currentStamps["heart-rate"],
       yFloor: 45,
       yCeil: 120,
       ticks: [50, 70, 90, 110, 130],
@@ -195,6 +210,7 @@ function buildSeries(data) {
       unit: "ms",
       empty: "Waiting for enough sleep/rest HR samples.",
       currentLabel: currentLabels.hrv,
+      currentStamp: currentStamps.hrv,
       yFloor: 0,
       yCeil: 100,
       ticks: [0, 25, 50, 75, 100],
@@ -210,6 +226,7 @@ function buildSeries(data) {
       unit: "h",
       empty: "Waiting for Health Connect sleep.",
       currentLabel: currentLabels.sleep,
+      currentStamp: currentStamps.sleep,
       yFloor: 0,
       yCeil: 10,
       ticks: [0, 2, 4, 6, 8, 10],
@@ -228,6 +245,7 @@ function buildSeries(data) {
       unit: "steps",
       empty: "Waiting for Health Connect steps.",
       currentLabel: currentLabels.steps,
+      currentStamp: currentStamps.steps,
       yFloor: 0,
       yCeil: 20000,
       ticks: [0, 5000, 10000, 15000, 20000],
@@ -372,7 +390,10 @@ function renderAllCharts(data) {
       <section class="chart-panel" aria-label="${series.title} graph">
         <div class="chart-panel-head">
           <strong>${series.title}</strong>
-          <span>${latestLabel}</span>
+          <span class="chart-current">
+            <b>${latestLabel}</b>
+            ${series.currentStamp ? `<small>${series.currentStamp}</small>` : ""}
+          </span>
         </div>
         <svg viewBox="0 0 ${width} ${height}" class="metric-chart" aria-hidden="true">
           <rect class="plot-bg" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}"></rect>

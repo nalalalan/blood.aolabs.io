@@ -30,7 +30,7 @@
       <div>
         <p class="eyebrow">Paper</p>
         <h1>Blood: source-bounded personal anxiety scoring from glucose and wearable signals</h1>
-        <p class="lead">Deterministic anxiety score, HRV estimate boundary, and current live example.</p>
+      <p class="lead">Deterministic anxiety score, source freshness, HRV estimate boundary, and current live example.</p>
       </div>
       <a class="primary-action" href="./paper.pdf" download>Open PDF</a>
     </section>
@@ -43,13 +43,13 @@
       <p>Raw starts at 2.2. Stable glucose, calm heart rate, solid sleep, and high recent steps subtract from the score. Low glucose, high glucose, high heart rate, low HRV, short sleep, and low movement add to it. The visible score is <code>clamp(1, 10, raw * 2)</code>, rounded to one decimal place.</p>
 
       <h2>Current live example</h2>
-      <p>The June 27, 2026 live read reconstructs as 4.4/10: 120 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV from sleep heart-rate samples, 431 minutes asleep, and 14,764 recent steps.</p>
+      <p>The June 27, 2026 live read reconstructs as 4.4/10: 82 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV from sleep heart-rate samples, 431 minutes asleep, and 13,028 recent steps.</p>
 
       <h2>Current block</h2>
       <p>Blood names the current time block and gives one direct more/less adjustment from the strongest current outlier.</p>
 
       <h2>Boundary</h2>
-      <p>True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from dense low-noise sleep/rest heart-rate windows and labels the result as estimated. This paper is a system record, not medical advice.</p>
+      <p>Heart rate is current only when the watch or phone writes current samples into Health Connect, so Blood shows the source sample time beside the chart value. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from dense low-noise sleep/rest heart-rate windows and labels the result as estimated. This paper is a system record, not medical advice.</p>
     </article>
   </main>
 </body>

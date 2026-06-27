@@ -510,6 +510,27 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.chart-panel-head .chart-current {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  line-height: 1.05;
+}
+
+.chart-current b {
+  color: #6d5f5c;
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.chart-current small {
+  max-width: 190px;
+  color: #867977;
+  font-size: 10px;
+  font-weight: 720;
+  line-height: 1.15;
+}
+
 .metric-chart {
   display: block;
   width: 100%;

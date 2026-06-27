@@ -21,13 +21,13 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val healthConnectProviderPackage = "com.google.android.apps.healthdata"
-    private val permissions = BloodBridgeSync.permissions
+    private val requestedPermissions = BloodBridgeSync.permissions
     private var syncAfterBluetoothPermission = false
     private var startAlwaysOnAfterBluetoothPermission = false
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        if (BloodBridgeSync.permissions.all { permission -> granted.contains(permission) }) {
+        if (BloodBridgeSync.requiredMetricPermissions.all { permission -> granted.contains(permission) }) {
             ensureAutoSync("Health Connect metrics permission granted. Auto sync scheduled.")
         } else {
             setStatus("Health Connect metrics permission not fully granted.")
@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
             text = "Grant Health Connect metrics permission"
             setOnClickListener {
                 saveSettings()
-                requestPermissions.launch(permissions)
+                requestPermissions.launch(requestedPermissions)
             }
         })
 
@@ -318,9 +318,9 @@ class MainActivity : ComponentActivity() {
             setStatus("Checking Health Connect metrics permission.")
             val client = HealthConnectClient.getOrCreate(this@MainActivity)
             val granted = client.permissionController.getGrantedPermissions()
-            if (!BloodBridgeSync.permissions.all { permission -> granted.contains(permission) }) {
+            if (!BloodBridgeSync.requiredMetricPermissions.all { permission -> granted.contains(permission) }) {
                 setStatus("Health Connect metrics permission required.")
-                requestPermissions.launch(permissions)
+                requestPermissions.launch(requestedPermissions)
                 return@launch
             }
             ensureAutoSync(

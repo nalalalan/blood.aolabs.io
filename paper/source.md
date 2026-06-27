@@ -2,18 +2,25 @@
 
 Title: Blood: source-bounded personal anxiety scoring from glucose and wearable signals
 
-Current source state checked 2026-06-27 3:11 PM ET from `https://blood.aolabs.io/api/blood/summary`:
+Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io/api/blood/summary`:
 
-- latest glucose: 120 mg/dL, measured 2026-06-27 2:26 PM ET, CONTOUR NEXT ONE meter bridge
-- heart rate: 68 bpm
-- estimated HRV: 12 ms_est
+- latest glucose: 82 mg/dL, measured 2026-06-27 4:14 PM ET, CONTOUR NEXT ONE meter bridge
+- health upload: 2026-06-27 4:17 PM ET
+- heart rate: 68 bpm, source sample measured 2026-06-27 1:50 PM ET
+- estimated HRV: 12 ms_est, source estimate timestamp 2026-06-27 4:04 AM ET
 - HRV basis: sleep_heart_rate_samples
 - HRV quality: sleep_dense_hr_estimate
 - HRV confidence: highest_available_without_beat_intervals
 - HRV samples: 735 heart-rate samples, 240 accepted adjacent RR-difference pairs, 8 selected windows
 - sleep: 431 minutes asleep
-- steps: 14,764 steps in the recent 24-hour window
+- steps: 13,028 steps in the recent 24-hour window
 - anxiety score: 4.4 /10
+
+Current bridge/UI boundary:
+
+- Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
+- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect; Blood now shows the sample time next to the chart value.
+- True HRV is current only when Health Connect exposes RMSSD HRV records. Without that source, Blood uses the labeled sleep/rest HR estimate and shows its estimate timestamp.
 
 Anxiety score source function: `server.js::estimateAnxietyState`.
 

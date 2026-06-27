@@ -7,6 +7,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -41,6 +42,7 @@ object BloodBridgeSync {
     const val LAST_AUTO_SYNC_STATUS_KEY = "lastAutoSyncStatus"
     private const val HEALTH_UPLOAD_BATCH_RECORDS = 150
     private const val HEALTH_UPLOAD_BATCH_BYTES = 120_000
+    private const val HEALTH_CONNECT_PAGE_SIZE = 1000
     private const val ENDPOINT_KEY = "endpoint"
     private const val TOKEN_KEY = "token"
 
@@ -50,13 +52,14 @@ object BloodBridgeSync {
     val stepsPermission: String = HealthPermission.getReadPermission(StepsRecord::class)
     val sleepPermission: String = HealthPermission.getReadPermission(SleepSessionRecord::class)
     val backgroundPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
-    val permissions: Set<String> = setOf(
-        glucosePermission,
+    val requiredMetricPermissions: Set<String> = setOf(
         heartRatePermission,
         stepsPermission,
         sleepPermission,
         backgroundPermission
     )
+    val optionalMetricPermissions: Set<String> = setOf(hrvPermission)
+    val permissions: Set<String> = setOf(glucosePermission) + requiredMetricPermissions + optionalMetricPermissions
 
     fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -239,7 +242,7 @@ object BloodBridgeSync {
 
         val client = HealthConnectClient.getOrCreate(context)
         val granted = client.permissionController.getGrantedPermissions()
-        val missing = listOf(heartRatePermission, stepsPermission, sleepPermission, backgroundPermission)
+        val missing = requiredMetricPermissions
             .filter { permission -> !granted.contains(permission) }
         if (missing.isNotEmpty()) {
             throw IllegalStateException("metric permission required.")
@@ -260,15 +263,8 @@ object BloodBridgeSync {
     suspend fun readGlucosePayload(client: HealthConnectClient, days: Int): JSONObject {
         val end = Instant.now().plus(1, ChronoUnit.DAYS)
         val start = Instant.now().minus(days.toLong() + 1, ChronoUnit.DAYS)
-        val response = client.readRecords(
-            ReadRecordsRequest(
-                recordType = BloodGlucoseRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end)
-            )
-        )
-
         val readings = JSONArray()
-        for (record in response.records) {
+        for (record in readRecordsPaged<BloodGlucoseRecord>(client, TimeRangeFilter.between(start, end))) {
             readings.put(recordToJson(record))
         }
 
@@ -285,13 +281,7 @@ object BloodBridgeSync {
         val granted = client.permissionController.getGrantedPermissions()
 
         val heartRate = JSONArray()
-        val heartRateResponse = client.readRecords(
-            ReadRecordsRequest(
-                recordType = HeartRateRecord::class,
-                timeRangeFilter = range
-            )
-        )
-        for (record in heartRateResponse.records) {
+        for (record in readRecordsPaged<HeartRateRecord>(client, range)) {
             for (sample in record.samples) {
                 heartRate.put(
                     JSONObject()
@@ -306,13 +296,7 @@ object BloodBridgeSync {
 
         val hrv = JSONArray()
         if (granted.contains(hrvPermission)) {
-            val hrvResponse = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateVariabilityRmssdRecord::class,
-                    timeRangeFilter = range
-                )
-            )
-            for (record in hrvResponse.records) {
+            for (record in readRecordsPaged<HeartRateVariabilityRmssdRecord>(client, range)) {
                 hrv.put(
                     JSONObject()
                         .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
@@ -325,13 +309,7 @@ object BloodBridgeSync {
         }
 
         val steps = JSONArray()
-        val stepsResponse = client.readRecords(
-            ReadRecordsRequest(
-                recordType = StepsRecord::class,
-                timeRangeFilter = range
-            )
-        )
-        for (record in stepsResponse.records) {
+        for (record in readRecordsPaged<StepsRecord>(client, range)) {
             steps.put(
                 JSONObject()
                     .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
@@ -344,13 +322,7 @@ object BloodBridgeSync {
         }
 
         val sleepSessions = JSONArray()
-        val sleepResponse = client.readRecords(
-            ReadRecordsRequest(
-                recordType = SleepSessionRecord::class,
-                timeRangeFilter = range
-            )
-        )
-        for (record in sleepResponse.records) {
+        for (record in readRecordsPaged<SleepSessionRecord>(client, range)) {
             sleepSessions.put(sleepToJson(record))
         }
 
@@ -361,6 +333,27 @@ object BloodBridgeSync {
             .put("hrv", hrv)
             .put("steps", steps)
             .put("sleepSessions", sleepSessions)
+    }
+
+    private suspend inline fun <reified T : Record> readRecordsPaged(
+        client: HealthConnectClient,
+        range: TimeRangeFilter
+    ): List<T> {
+        val records = mutableListOf<T>()
+        var pageToken: String? = null
+        do {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = T::class,
+                    timeRangeFilter = range,
+                    pageSize = HEALTH_CONNECT_PAGE_SIZE,
+                    pageToken = pageToken
+                )
+            )
+            records.addAll(response.records)
+            pageToken = response.pageToken
+        } while (!pageToken.isNullOrBlank())
+        return records
     }
 
     private fun postHealthMetricsPayload(
