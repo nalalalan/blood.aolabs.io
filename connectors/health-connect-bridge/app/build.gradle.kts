@@ -20,13 +20,28 @@ android {
     namespace = "io.aolabs.bloodbridge"
     compileSdk = 35
 
+    signingConfigs {
+        create("bridgeDebug") {
+            storeFile = file("blood-bridge-debug.keystore")
+            storePassword = "bloodbridge"
+            keyAlias = "blood-bridge"
+            keyPassword = "bloodbridge"
+        }
+    }
+
     defaultConfig {
         applicationId = "io.aolabs.bloodbridge"
         minSdk = 28
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.7.0"
         buildConfigField("String", "DEFAULT_BRIDGE_TOKEN", "\"${defaultBridgeToken.escapeForBuildConfig()}\"")
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("bridgeDebug")
+        }
     }
 
     buildFeatures {
