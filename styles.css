@@ -696,22 +696,22 @@ tbody tr:last-child td {
 
   th:nth-child(1),
   td:nth-child(1) {
-    width: 38%;
+    width: 42%;
   }
 
   th:nth-child(2),
   td:nth-child(2) {
-    width: 19%;
+    width: 20%;
   }
 
   th:nth-child(3),
   td:nth-child(3) {
-    width: 14%;
+    display: none;
   }
 
   th:nth-child(4),
   td:nth-child(4) {
-    width: 29%;
+    width: 38%;
   }
 
   .sync-steps {
