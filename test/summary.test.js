@@ -38,9 +38,9 @@ test("summary keeps latest reading and ascending trend", () => {
   assert.deepEqual(summary.trend.map((reading) => reading.valueMgDl), [110, 130]);
 });
 
-test("empty summary names the Health Connect boundary", () => {
+test("empty summary names the automatic meter bridge boundary", () => {
   const summary = summarizeReadings([]);
   assert.equal(summary.status, "waiting_for_contour_sync");
-  assert.match(summary.message, /Health Connect has not uploaded Contour glucose records/);
-  assert.match(summary.message, /Contour CSV export/);
+  assert.match(summary.message, /automatic CONTOUR NEXT ONE Bluetooth bridge upload/);
+  assert.match(summary.message, /Health Connect is backup only/);
 });

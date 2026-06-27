@@ -1,12 +1,16 @@
 # blood.aolabs.io
 
-Blood is an AO Labs blood glucose record for readings captured by a CONTOUR NEXT ONE through the Contour app.
+Blood is an AO Labs blood glucose record for readings captured by a CONTOUR NEXT ONE meter.
 
 The public page renders a clear glucose graph from the Blood API. Viewing the graph is public so it works from any device; writing readings requires the ingest token.
 
 ## Data path
 
-Health Connect path:
+Automatic target path:
+
+`CONTOUR NEXT ONE -> Blood Android bridge over Bluetooth -> Blood API -> graph`
+
+Backup path:
 
 `CONTOUR NEXT ONE -> Contour app -> Health Connect, only if Contour writes blood glucose there -> Blood Android bridge -> Blood API -> graph`
 
@@ -17,22 +21,25 @@ Current fallbacks:
 `Manual mg/dL entry -> blood.aolabs.io Write path form -> Blood API -> graph`
 
 The website cannot directly read another phone app's private storage. The bridge can only read Health Connect glucose records that the phone has permissioned and that another app has actually written.
+Because Contour is not appearing as a Health Connect source on the phone, the bridge's primary source is the meter's Bluetooth glucose service, not the Contour app's private app storage.
 
 ## Phone setup
 
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
-1. Sync the CONTOUR NEXT ONE reading into the Contour app.
-2. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
-3. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
-4. Check whether Health Connect lists Contour as a source for blood glucose. If Contour is not listed, the bridge has nothing to read; use manual entry or the Contour export form on the Blood page.
-5. Install Blood Bridge on the same phone.
-6. In Blood Bridge, enter:
+1. Install Blood Bridge on the Android phone.
+2. In Blood Bridge, enter:
    - endpoint: `https://blood.aolabs.io/api/ingest/glucose-readings`
    - token: Railway `BLOOD_INGEST_TOKEN`
-7. Tap `Grant blood glucose permission`.
-8. Tap `Sync last 90 days`.
-9. Open `https://blood.aolabs.io/`.
+3. Tap `Grant Bluetooth permission`.
+4. Keep the CONTOUR NEXT ONE near the phone and tap `Sync CONTOUR meter now`.
+5. Open `https://blood.aolabs.io/`.
+
+Health Connect backup:
+
+1. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
+2. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
+3. If Health Connect lists a glucose source, tap `Grant Health Connect backup permission` in Blood Bridge.
 
 ## Local
 

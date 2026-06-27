@@ -84,6 +84,37 @@ object BloodBridgeSync {
             throw IllegalStateException("Endpoint and bridge token required.")
         }
 
+        var meterStatus = ContourMeterSync.bluetoothStatus(context)
+        if (ContourMeterSync.hasBluetoothPermission(context)) {
+            try {
+                val meterResult = ContourMeterSync.sync(context, endpoint, token)
+                if (meterResult.accepted > 0) return meterResult
+                meterStatus = meterResult.response
+            } catch (error: Exception) {
+                meterStatus = error.message ?: error.javaClass.simpleName
+            }
+        }
+
+        return try {
+            val healthResult = syncHealthConnect(context, endpoint, token, days)
+            if (healthResult.accepted > 0) healthResult else SyncResult(
+                0,
+                "No automatic readings reached Blood. Meter path: $meterStatus Health Connect path: ${healthResult.response}"
+            )
+        } catch (error: Exception) {
+            val healthStatus = error.message ?: error.javaClass.simpleName
+            throw IllegalStateException(
+                "No automatic data path is currently producing readings. Meter path: $meterStatus Health Connect path: $healthStatus"
+            )
+        }
+    }
+
+    private suspend fun syncHealthConnect(
+        context: Context,
+        endpoint: String,
+        token: String,
+        days: Int
+    ): SyncResult {
         if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) {
             throw IllegalStateException("Health Connect unavailable.")
         }
@@ -100,7 +131,7 @@ object BloodBridgeSync {
         val payload = readGlucosePayload(client, days)
         val accepted = payload.getJSONArray("readings").length()
         if (accepted == 0) {
-            return SyncResult(0, "No Health Connect glucose records found. If Contour is not listed in Health Connect, use the Contour CSV import on blood.aolabs.io.")
+            return SyncResult(0, "No Health Connect glucose records found.")
         }
 
         return SyncResult(accepted, postPayload(endpoint, token, payload))

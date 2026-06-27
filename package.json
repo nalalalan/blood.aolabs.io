@@ -2,7 +2,7 @@
   "name": "blood-aolabs",
   "version": "0.1.0",
   "private": true,
-  "description": "AO Labs blood glucose record populated from Contour exports or consented Health Connect glucose records.",
+  "description": "AO Labs blood glucose record populated by an automatic CONTOUR NEXT ONE meter bridge.",
   "main": "server.js",
   "scripts": {
     "dev": "node server.js",

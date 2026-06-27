@@ -59,6 +59,7 @@ function daysAgo(days) {
 
 function sourceLabel(reading) {
   if (!reading) return "";
+  if (reading.source === "contour-meter-ble") return "CONTOUR meter bridge";
   if (reading.source === "contour-csv") return "Contour CSV";
   if (reading.source === "manual-entry") return "Manual entry";
   if (reading.source === "health-connect") {
@@ -94,7 +95,7 @@ function renderChart(data) {
   if (!points.length) {
     renderBoundary(
       "No readings reached Blood.",
-      "Health Connect has not uploaded Contour glucose records. If Contour is not listed there, use a Contour CSV export."
+      "Install or update Blood Bridge, grant Bluetooth, and keep the CONTOUR NEXT ONE near the phone after a reading. Health Connect is backup only."
     );
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
@@ -219,13 +220,13 @@ function renderData(data) {
     latestValue.textContent = "No data";
     latestUnit.textContent = "";
     latestTime.textContent = "No readings yet.";
-    latestSource.textContent = "No upload from Health Connect or CSV.";
+    latestSource.textContent = "No upload from CONTOUR meter bridge.";
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
-    syncLine.textContent = data?.message || "No readings have reached Blood. If Contour is not listed in Health Connect, use a Contour CSV export.";
+    syncLine.textContent = data?.message || "No readings have reached Blood. Waiting for the automatic CONTOUR meter bridge upload.";
     renderBoundary(
       "No readings reached Blood.",
-      "The phone bridge can only upload glucose records that already exist in Health Connect. Contour CSV import is the fallback."
+      "The phone bridge now targets the CONTOUR NEXT ONE meter over Bluetooth. Manual entry and CSV import are fallback only."
     );
     renderTable(data);
     return;

@@ -1,10 +1,14 @@
-# Blood Health Connect Bridge
+# Blood Android Bridge
 
-This Android bridge reads Health Connect `BloodGlucoseRecord` records and posts them to `blood.aolabs.io`. It cannot read the Contour app's private storage.
+This Android bridge reads a nearby CONTOUR NEXT ONE meter over the Bluetooth Glucose service and posts readings to `blood.aolabs.io`. Health Connect `BloodGlucoseRecord` remains a backup source. The bridge cannot read the Contour app's private storage.
 
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
-It only works if the phone has glucose records in Health Connect. If Contour is not listed as a Health Connect blood glucose source, use the Contour CSV export form on `blood.aolabs.io` instead.
+The primary automatic path is the meter itself:
+
+`CONTOUR NEXT ONE -> Bluetooth -> Blood Bridge -> blood.aolabs.io`
+
+Manual entry and Contour CSV import are fallback tools only when the automatic meter bridge is blocked.
 
 Default endpoint:
 
@@ -12,4 +16,4 @@ Default endpoint:
 
 The bridge stores the endpoint and ingest token locally in Android shared preferences. Background sync runs through WorkManager after permission and token setup.
 
-On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon.
+On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. This matters only for the backup path.

@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>blood.aolabs.io</title>
-  <meta name="description" content="Blood glucose graph from verified Health Connect uploads or Contour CSV imports.">
+  <meta name="description" content="Blood glucose graph from automatic CONTOUR NEXT ONE meter bridge uploads.">
   <link rel="canonical" href="https://blood.aolabs.io/">
   <meta name="theme-color" content="#f7f4ee">
   <meta name="color-scheme" content="light">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="AO Labs">
   <meta property="og:title" content="blood">
-  <meta property="og:description" content="A clear blood glucose graph from verified Health Connect uploads or Contour CSV imports.">
+  <meta property="og:description" content="A clear blood glucose graph from automatic CONTOUR NEXT ONE meter bridge uploads.">
   <meta property="og:url" content="https://blood.aolabs.io/">
   <meta property="og:image" content="https://aolabs.io/previews/blood-20260626.png">
   <meta property="og:image:secure_url" content="https://aolabs.io/previews/blood-20260626.png">
@@ -21,7 +21,7 @@
   <meta property="og:image:alt" content="blood preview card.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="blood">
-  <meta name="twitter:description" content="A clear blood glucose graph from verified Health Connect uploads or Contour CSV imports.">
+  <meta name="twitter:description" content="A clear blood glucose graph from automatic CONTOUR NEXT ONE meter bridge uploads.">
   <meta name="twitter:image" content="https://aolabs.io/previews/blood-20260626.png">
   <meta name="twitter:image:alt" content="blood preview card.">
   <meta name="blood-api-base" content="">
@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260626-v3">
+  <link rel="stylesheet" href="./styles.css?v=20260626-v4">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -69,7 +69,7 @@
         </div>
         <div>
           <strong id="latest-time">No readings yet.</strong>
-          <span id="latest-source">No upload from Health Connect or CSV.</span>
+          <span id="latest-source">No upload from CONTOUR meter bridge.</span>
         </div>
         <div>
           <strong id="range-summary">No data</strong>
@@ -118,23 +118,25 @@
     <section class="sync-section" id="sync" aria-labelledby="sync-title">
       <div>
         <h2 id="sync-title">Phone bridge</h2>
-        <p>Blood can only read Health Connect glucose records that already exist. If Contour is not listed in Health Connect, the bridge has nothing to upload.</p>
+        <p>Automatic path: CONTOUR NEXT ONE meter over Bluetooth, then Blood Bridge, then Blood API. Health Connect is backup only.</p>
         <a class="download-link" href="./downloads/blood-bridge.apk" download>Download Blood Bridge APK</a>
       </div>
       <div class="sync-steps" aria-label="sync setup">
-        <span>Health Connect shows a blood glucose source</span>
-        <span>Settings -> Security and privacy -> Privacy Controls -> Health Connect</span>
-        <span>Blood Bridge has the bridge token</span>
-        <span>Sync reports accepted readings</span>
+        <span>Install Blood Bridge on the Android phone</span>
+        <span>Grant Bluetooth permission</span>
+        <span>Keep CONTOUR NEXT ONE near the phone after a reading</span>
+        <span>Blood shows accepted meter readings</span>
       </div>
     </section>
 
     <section class="import-section" id="import" aria-labelledby="import-title">
       <div>
-        <h2 id="import-title">Write path</h2>
-        <p>Use this when Contour is not visible in Health Connect. Add the current reading or import a Contour CSV with the bridge token.</p>
+        <h2 id="import-title">Fallback write path</h2>
+        <p>Manual entry and CSV import are only fallback tools when the automatic meter bridge is blocked.</p>
       </div>
-      <div class="entry-tools">
+      <details class="fallback-tools">
+        <summary>Open fallback entry tools</summary>
+        <div class="entry-tools">
         <form id="manual-entry-form" class="data-form manual-entry">
           <label>
             <span>mg/dL</span>
@@ -173,10 +175,11 @@
           <button id="csv-submit" type="submit">Import CSV</button>
           <p id="csv-status" role="status">No CSV imported.</p>
         </form>
-      </div>
+        </div>
+      </details>
     </section>
   </main>
 
-  <script src="./app.js?v=20260626-v3" defer></script>
+  <script src="./app.js?v=20260626-v4" defer></script>
 </body>
 </html>
