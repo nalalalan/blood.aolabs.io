@@ -58,7 +58,7 @@
       <div class="surface-head">
         <div>
           <h1 id="blood-title">Blood</h1>
-          <p id="sync-line">Waiting for automatic phone bridge upload.</p>
+          <p id="sync-line">Loading automatic records.</p>
         </div>
         <button id="refresh-button" type="button">Refresh</button>
       </div>
@@ -67,14 +67,14 @@
         <div class="anxiety-readout">
           <span>Anxiety estimate</span>
           <div>
-            <strong id="anxiety-score">2.0</strong>
+            <strong id="anxiety-score" class="is-loading">Loading</strong>
             <small>/10</small>
           </div>
-          <p id="anxiety-label">Waiting for full metrics.</p>
+          <p id="anxiety-label">Checking latest bridge upload.</p>
         </div>
         <div class="health-suggestion">
           <strong id="suggestion-time">Now</strong>
-          <span id="suggestion-action">Blood will choose the next stabilizing action from the current outlier.</span>
+          <span id="suggestion-action">Loading current source state.</span>
           <small id="suggestion-reason">Personal estimate, not diagnosis.</small>
         </div>
       </div>
@@ -87,7 +87,12 @@
       </div>
 
       <div class="chart-frame">
-        <div id="charts" class="charts" role="img" aria-label="glucose, heart rate, HRV, sleep, and steps graphs"></div>
+        <div id="charts" class="charts" role="img" aria-label="glucose, heart rate, HRV, sleep, and steps graphs">
+          <div class="chart-boundary" role="status">
+            <strong>Loading automatic records.</strong>
+            <p>Checking the latest bridge upload and source timestamps.</p>
+          </div>
+        </div>
       </div>
       <div class="chart-note">
         <span>All graphs use the same time axis.</span>
@@ -97,15 +102,15 @@
       <div class="health-strip" aria-label="current health state">
         <div class="latest-strip is-boundary" aria-label="latest glucose state">
           <div class="latest-value">
-            <span id="latest-value">No data</span>
+            <span id="latest-value">Loading</span>
             <small id="latest-unit"></small>
           </div>
           <div>
-            <strong id="latest-time">No readings yet.</strong>
-            <span id="latest-source">No upload from CONTOUR meter bridge.</span>
+            <strong id="latest-time">Checking latest reading.</strong>
+            <span id="latest-source">Waiting for bridge response.</span>
           </div>
           <div>
-            <strong id="range-summary">No data</strong>
+            <strong id="range-summary">Loading</strong>
             <span id="range-detail">Selected range.</span>
           </div>
         </div>

@@ -443,7 +443,10 @@ function renderHealth(data) {
   const asleepMinutes = sleep?.asleepMinutes ?? sleep?.value;
   const stepCount = steps?.value;
 
-  if (anxietyScore) anxietyScore.textContent = formatScore10(anxiety.score);
+  if (anxietyScore) {
+    anxietyScore.classList.remove("is-loading");
+    anxietyScore.textContent = formatScore10(anxiety.score);
+  }
   if (anxietyLabel) {
     const label = anxiety.label ? `Estimate: ${anxiety.label}.` : "Waiting for full metrics.";
     const captured = health.lastCapturedAt ? ` Metrics upload ${formatDateTime(health.lastCapturedAt)}.` : "";

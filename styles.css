@@ -375,6 +375,11 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.anxiety-readout strong.is-loading {
+  font-size: 22px;
+  line-height: 1;
+}
+
 .anxiety-readout small {
   font-size: 15px;
   font-weight: 800;
