@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Reads Health Connect blood glucose records and sends them to blood.aolabs.io after setup."
+            text = "Reads Health Connect blood glucose records only. If Contour is not listed in Health Connect, this bridge has nothing to upload; use the Contour CSV import on blood.aolabs.io."
             textSize = 15f
             setPadding(0, padding / 2, 0, padding)
         })
@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity() {
                 val payload = withContext(Dispatchers.IO) { BloodBridgeSync.readGlucosePayload(client, days) }
                 val accepted = payload.getJSONArray("readings").length()
                 if (accepted == 0) {
-                    setStatus("No Health Connect blood glucose records found in the selected window.")
+                    setStatus("No Health Connect glucose records found. If Contour is not listed in Health Connect, use the Contour CSV import on blood.aolabs.io.")
                     return@launch
                 }
 

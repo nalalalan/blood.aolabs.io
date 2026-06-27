@@ -37,3 +37,10 @@ test("summary keeps latest reading and ascending trend", () => {
   assert.equal(summary.latest.valueMgDl, 130);
   assert.deepEqual(summary.trend.map((reading) => reading.valueMgDl), [110, 130]);
 });
+
+test("empty summary names the Health Connect boundary", () => {
+  const summary = summarizeReadings([]);
+  assert.equal(summary.status, "waiting_for_contour_sync");
+  assert.match(summary.message, /Health Connect has not uploaded Contour glucose records/);
+  assert.match(summary.message, /Contour CSV export/);
+});

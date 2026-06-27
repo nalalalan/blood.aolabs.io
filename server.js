@@ -490,7 +490,7 @@ function summarizeReadings(readings) {
       trend: [],
       days: [],
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
-      message: "No Contour glucose readings have reached Blood yet."
+      message: "No readings have reached Blood. Health Connect has not uploaded Contour glucose records; if Contour is not listed in Health Connect, use a Contour CSV export/import path."
     };
   }
 

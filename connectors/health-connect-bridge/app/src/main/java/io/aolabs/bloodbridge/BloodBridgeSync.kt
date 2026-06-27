@@ -100,7 +100,7 @@ object BloodBridgeSync {
         val payload = readGlucosePayload(client, days)
         val accepted = payload.getJSONArray("readings").length()
         if (accepted == 0) {
-            return SyncResult(0, "No Health Connect blood glucose records found.")
+            return SyncResult(0, "No Health Connect glucose records found. If Contour is not listed in Health Connect, use the Contour CSV import on blood.aolabs.io.")
         }
 
         return SyncResult(accepted, postPayload(endpoint, token, payload))

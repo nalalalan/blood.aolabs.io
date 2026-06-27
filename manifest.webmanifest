@@ -1,7 +1,7 @@
 {
   "name": "blood.aolabs.io",
   "short_name": "blood",
-  "description": "Blood glucose graph from Contour or consented Health Connect readings.",
+  "description": "Blood glucose graph from verified Health Connect uploads or Contour CSV imports.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

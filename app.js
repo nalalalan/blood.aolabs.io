@@ -11,6 +11,11 @@ const latestStrip = document.querySelector(".latest-strip");
 const readingsBody = document.getElementById("readings-body");
 const recordCount = document.getElementById("record-count");
 const rangeButtons = Array.from(document.querySelectorAll("[data-range]"));
+const csvImportForm = document.getElementById("csv-import-form");
+const csvFileInput = document.getElementById("csv-file");
+const csvTokenInput = document.getElementById("csv-token");
+const csvSubmit = document.getElementById("csv-submit");
+const csvStatus = document.getElementById("csv-status");
 
 const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
@@ -80,8 +85,8 @@ function renderChart(data) {
   const points = filteredTrend(data);
   if (!points.length) {
     renderBoundary(
-      "Waiting for readings.",
-      "No readings exist in the selected range."
+      "No readings reached Blood.",
+      "Health Connect has not uploaded Contour glucose records. If Contour is not listed there, use a Contour CSV export."
     );
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
@@ -186,7 +191,7 @@ function renderTable(data) {
   const rows = [...(data?.readings || [])].slice(0, 14);
   recordCount.textContent = `${data?.recordCount || 0} reading${data?.recordCount === 1 ? "" : "s"}`;
   if (!rows.length) {
-    readingsBody.innerHTML = `<tr><td colspan="4">No readings loaded.</td></tr>`;
+    readingsBody.innerHTML = `<tr><td colspan="4">No readings reached Blood.</td></tr>`;
     return;
   }
   readingsBody.innerHTML = rows.map((reading) => `
@@ -206,13 +211,13 @@ function renderData(data) {
     latestValue.textContent = "No data";
     latestUnit.textContent = "";
     latestTime.textContent = "No readings yet.";
-    latestSource.textContent = "Waiting for Contour data.";
+    latestSource.textContent = "No upload from Health Connect or CSV.";
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
-    syncLine.textContent = data?.message || "Contour readings sync here after the bridge or CSV import sends data.";
+    syncLine.textContent = data?.message || "No readings have reached Blood. If Contour is not listed in Health Connect, use a Contour CSV export.";
     renderBoundary(
-      "No readings synced.",
-      "The graph will fill after the phone bridge reads Health Connect glucose records or a Contour CSV export is imported."
+      "No readings reached Blood.",
+      "The phone bridge can only upload glucose records that already exist in Health Connect. Contour CSV import is the fallback."
     );
     renderTable(data);
     return;
@@ -263,6 +268,52 @@ rangeButtons.forEach((button) => {
 });
 
 refreshButton.addEventListener("click", () => loadSummary(true));
+
+function setCsvState(message, busy = false) {
+  if (!csvStatus || !csvSubmit) return;
+  csvStatus.textContent = message;
+  csvSubmit.disabled = busy;
+  csvSubmit.toggleAttribute("aria-busy", busy);
+}
+
+csvImportForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = csvFileInput?.files?.[0];
+  const token = csvTokenInput?.value.trim();
+  if (!file) {
+    setCsvState("Choose a Contour CSV file.");
+    return;
+  }
+  if (!token) {
+    setCsvState("Bridge token required.");
+    return;
+  }
+
+  setCsvState("Importing CSV.", true);
+  try {
+    const csvText = await file.text();
+    const response = await fetch(`${API_BASE}/api/ingest/contour-csv`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "text/csv"
+      },
+      body: csvText
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `import ${response.status}`);
+    }
+    setCsvState(`Imported ${result.accepted || 0} reading${result.accepted === 1 ? "" : "s"}.`);
+    csvImportForm.reset();
+    loadSummary(true);
+  } catch (error) {
+    setCsvState(`Import failed: ${error.message || "CSV not accepted"}.`);
+  } finally {
+    if (csvSubmit) csvSubmit.disabled = false;
+    csvSubmit?.removeAttribute("aria-busy");
+  }
+});
 
 loadSummary(false);
 pollTimer = window.setInterval(() => loadSummary(false), POLL_MS);

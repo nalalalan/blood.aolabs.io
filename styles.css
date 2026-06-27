@@ -157,7 +157,8 @@ button {
 
 .graph-surface,
 .readings-section,
-.sync-section {
+.sync-section,
+.import-section {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 94%, white);
@@ -198,6 +199,7 @@ h2 {
 
 .surface-head p,
 .sync-section p,
+.import-section p,
 .latest-strip span,
 .chart-note,
 .section-head span {
@@ -205,7 +207,8 @@ h2 {
 }
 
 .surface-head p,
-.sync-section p {
+.sync-section p,
+.import-section p {
   max-width: 690px;
   margin-top: 8px;
   font-size: 15px;
@@ -214,7 +217,9 @@ h2 {
 
 #refresh-button,
 .range-controls button,
-.download-link {
+.download-link,
+.csv-import input,
+.csv-import button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffaf2;
@@ -222,7 +227,8 @@ h2 {
 }
 
 #refresh-button,
-.range-controls button {
+.range-controls button,
+.csv-import button {
   cursor: pointer;
 }
 
@@ -244,7 +250,8 @@ h2 {
   text-decoration: none;
 }
 
-#refresh-button:disabled {
+#refresh-button:disabled,
+.csv-import button:disabled {
   cursor: wait;
   opacity: .68;
 }
@@ -523,6 +530,58 @@ tbody tr:last-child td {
   font-weight: 760;
 }
 
+.import-section {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: 18px;
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.csv-import {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, .72fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.csv-import label,
+.csv-import label span,
+.csv-import p {
+  min-width: 0;
+}
+
+.csv-import label span {
+  display: block;
+  margin-bottom: 5px;
+  color: #5d514e;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.csv-import input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.csv-import button {
+  min-height: 40px;
+  padding: 8px 13px;
+  background: var(--blood);
+  color: #fffaf2;
+  font-weight: 760;
+}
+
+.csv-import p {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 @media (max-width: 760px) {
   .suite-topbar,
   .shell {
@@ -543,7 +602,8 @@ tbody tr:last-child td {
   }
 
   .surface-head,
-  .sync-section {
+  .sync-section,
+  .import-section {
     display: block;
   }
 
@@ -590,6 +650,11 @@ tbody tr:last-child td {
   }
 
   .sync-steps {
+    grid-template-columns: 1fr;
+    margin-top: 14px;
+  }
+
+  .csv-import {
     grid-template-columns: 1fr;
     margin-top: 14px;
   }

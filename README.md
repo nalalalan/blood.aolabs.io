@@ -6,13 +6,13 @@ The public page renders a clear glucose graph from the Blood API. Viewing the gr
 
 ## Data path
 
-Preferred Android path:
+Health Connect path:
 
-`CONTOUR NEXT ONE -> Contour app -> Health Connect, if Contour writes blood glucose there -> Blood Android bridge -> Blood API -> graph`
+`CONTOUR NEXT ONE -> Contour app -> Health Connect, only if Contour writes blood glucose there -> Blood Android bridge -> Blood API -> graph`
 
 Current fallback:
 
-`Contour CSV export -> POST /api/ingest/contour-csv -> Blood API -> graph`
+`Contour CSV export -> blood.aolabs.io Contour export form -> Blood API -> graph`
 
 The website cannot directly read another phone app's private storage. The bridge can only read Health Connect glucose records that the phone has permissioned and that another app has actually written.
 
@@ -23,7 +23,7 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
 1. Sync the CONTOUR NEXT ONE reading into the Contour app.
 2. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
 3. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
-4. Check whether Blood glucose has Contour readings. If Contour does not write blood glucose there, use the CSV ingest fallback.
+4. Check whether Health Connect lists Contour as a source for blood glucose. If Contour is not listed, the bridge has nothing to read; use the Contour export form on the Blood page.
 5. Install Blood Bridge on the same phone.
 6. In Blood Bridge, enter:
    - endpoint: `https://blood.aolabs.io/api/ingest/glucose-readings`
@@ -71,7 +71,7 @@ Authorization: `Bearer $BLOOD_INGEST_TOKEN`
 
 Authorization: `Bearer $BLOOD_INGEST_TOKEN`
 
-Body: CSV text with date/time and glucose columns. The parser accepts common Contour-style columns such as `Date`, `Time`, `Reading (mg/dL)`, `Meal Marker`, and `Notes`.
+Body: CSV text with date/time and glucose columns. The public page posts this from the Contour export form when a bridge token is entered. The parser accepts common Contour-style columns such as `Date`, `Time`, `Reading (mg/dL)`, `Meal Marker`, and `Notes`.
 
 `GET /api/blood/summary`
 

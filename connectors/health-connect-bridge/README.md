@@ -1,10 +1,10 @@
 # Blood Health Connect Bridge
 
-This Android bridge reads Health Connect `BloodGlucoseRecord` records and posts them to `blood.aolabs.io`.
+This Android bridge reads Health Connect `BloodGlucoseRecord` records and posts them to `blood.aolabs.io`. It cannot read the Contour app's private storage.
 
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
-It only works if the phone has glucose records in Health Connect. The Contour app may still require CSV export if it does not write CONTOUR NEXT ONE readings to Health Connect on the phone.
+It only works if the phone has glucose records in Health Connect. If Contour is not listed as a Health Connect blood glucose source, use the Contour CSV export form on `blood.aolabs.io` instead.
 
 Default endpoint:
 
