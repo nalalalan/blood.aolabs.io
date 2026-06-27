@@ -16,6 +16,13 @@ const csvFileInput = document.getElementById("csv-file");
 const csvTokenInput = document.getElementById("csv-token");
 const csvSubmit = document.getElementById("csv-submit");
 const csvStatus = document.getElementById("csv-status");
+const manualEntryForm = document.getElementById("manual-entry-form");
+const manualValueInput = document.getElementById("manual-value");
+const manualTimeInput = document.getElementById("manual-time");
+const manualMarkerInput = document.getElementById("manual-marker");
+const manualTokenInput = document.getElementById("manual-token");
+const manualSubmit = document.getElementById("manual-submit");
+const manualStatus = document.getElementById("manual-status");
 
 const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
@@ -53,6 +60,7 @@ function daysAgo(days) {
 function sourceLabel(reading) {
   if (!reading) return "";
   if (reading.source === "contour-csv") return "Contour CSV";
+  if (reading.source === "manual-entry") return "Manual entry";
   if (reading.source === "health-connect") {
     return reading.sourcePackage ? `Health Connect / ${reading.sourcePackage}` : "Health Connect";
   }
@@ -275,6 +283,79 @@ function setCsvState(message, busy = false) {
   csvSubmit.disabled = busy;
   csvSubmit.toggleAttribute("aria-busy", busy);
 }
+
+function localDateTimeValue(date = new Date()) {
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function setManualState(message, busy = false) {
+  if (!manualStatus || !manualSubmit) return;
+  manualStatus.textContent = message;
+  manualSubmit.disabled = busy;
+  manualSubmit.toggleAttribute("aria-busy", busy);
+}
+
+if (manualTimeInput) {
+  manualTimeInput.value = localDateTimeValue();
+}
+
+manualEntryForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const value = Number.parseInt(manualValueInput?.value || "", 10);
+  const measuredAtValue = manualTimeInput?.value || "";
+  const token = manualTokenInput?.value.trim();
+  if (!Number.isFinite(value) || value < 20 || value > 600) {
+    setManualState("Enter a glucose value in mg/dL.");
+    return;
+  }
+  if (!measuredAtValue) {
+    setManualState("Measurement time required.");
+    return;
+  }
+  if (!token) {
+    setManualState("Bridge token required.");
+    return;
+  }
+
+  const measuredAt = new Date(measuredAtValue).toISOString();
+  const relationToMeal = manualMarkerInput?.value || "";
+  setManualState("Adding reading.", true);
+  try {
+    const response = await fetch(`${API_BASE}/api/ingest/glucose-readings`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        source: "manual-entry",
+        capturedAt: new Date().toISOString(),
+        readings: [
+          {
+            measuredAt,
+            valueMgDl: value,
+            relationToMeal,
+            specimenSource: "capillary_blood"
+          }
+        ]
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `entry ${response.status}`);
+    }
+    setManualState(`Added ${value} mg/dL.`);
+    manualValueInput.value = "";
+    if (manualTimeInput) manualTimeInput.value = localDateTimeValue();
+    loadSummary(true);
+  } catch (error) {
+    setManualState(`Entry failed: ${error.message || "not accepted"}.`);
+  } finally {
+    if (manualSubmit) manualSubmit.disabled = false;
+    manualSubmit?.removeAttribute("aria-busy");
+  }
+});
 
 csvImportForm?.addEventListener("submit", async (event) => {
   event.preventDefault();

@@ -10,9 +10,11 @@ Health Connect path:
 
 `CONTOUR NEXT ONE -> Contour app -> Health Connect, only if Contour writes blood glucose there -> Blood Android bridge -> Blood API -> graph`
 
-Current fallback:
+Current fallbacks:
 
 `Contour CSV export -> blood.aolabs.io Contour export form -> Blood API -> graph`
+
+`Manual mg/dL entry -> blood.aolabs.io Write path form -> Blood API -> graph`
 
 The website cannot directly read another phone app's private storage. The bridge can only read Health Connect glucose records that the phone has permissioned and that another app has actually written.
 
@@ -23,7 +25,7 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
 1. Sync the CONTOUR NEXT ONE reading into the Contour app.
 2. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
 3. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
-4. Check whether Health Connect lists Contour as a source for blood glucose. If Contour is not listed, the bridge has nothing to read; use the Contour export form on the Blood page.
+4. Check whether Health Connect lists Contour as a source for blood glucose. If Contour is not listed, the bridge has nothing to read; use manual entry or the Contour export form on the Blood page.
 5. Install Blood Bridge on the same phone.
 6. In Blood Bridge, enter:
    - endpoint: `https://blood.aolabs.io/api/ingest/glucose-readings`

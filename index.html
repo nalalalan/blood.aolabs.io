@@ -131,21 +131,49 @@
 
     <section class="import-section" id="import" aria-labelledby="import-title">
       <div>
-        <h2 id="import-title">Contour export</h2>
-        <p>Use this when Contour is not visible in Health Connect. Import a Contour CSV with the bridge token.</p>
+        <h2 id="import-title">Write path</h2>
+        <p>Use this when Contour is not visible in Health Connect. Add the current reading or import a Contour CSV with the bridge token.</p>
       </div>
-      <form id="csv-import-form" class="csv-import">
-        <label>
-          <span>CSV file</span>
-          <input id="csv-file" type="file" accept=".csv,text/csv">
-        </label>
-        <label>
-          <span>Bridge token</span>
-          <input id="csv-token" type="password" autocomplete="off" spellcheck="false" placeholder="required">
-        </label>
-        <button id="csv-submit" type="submit">Import</button>
-        <p id="csv-status" role="status">No CSV imported.</p>
-      </form>
+      <div class="entry-tools">
+        <form id="manual-entry-form" class="data-form manual-entry">
+          <label>
+            <span>mg/dL</span>
+            <input id="manual-value" type="number" min="20" max="600" inputmode="numeric" placeholder="104">
+          </label>
+          <label>
+            <span>Time</span>
+            <input id="manual-time" type="datetime-local">
+          </label>
+          <label>
+            <span>Marker</span>
+            <select id="manual-marker">
+              <option value="">General</option>
+              <option value="fasting">Fasting</option>
+              <option value="before_meal">Before meal</option>
+              <option value="after_meal">After meal</option>
+            </select>
+          </label>
+          <label>
+            <span>Bridge token</span>
+            <input id="manual-token" type="password" autocomplete="off" spellcheck="false" placeholder="required">
+          </label>
+          <button id="manual-submit" type="submit">Add reading</button>
+          <p id="manual-status" role="status">No manual reading added.</p>
+        </form>
+
+        <form id="csv-import-form" class="data-form csv-import">
+          <label>
+            <span>CSV file</span>
+            <input id="csv-file" type="file" accept=".csv,text/csv">
+          </label>
+          <label>
+            <span>Bridge token</span>
+            <input id="csv-token" type="password" autocomplete="off" spellcheck="false" placeholder="required">
+          </label>
+          <button id="csv-submit" type="submit">Import CSV</button>
+          <p id="csv-status" role="status">No CSV imported.</p>
+        </form>
+      </div>
     </section>
   </main>
 

@@ -218,8 +218,9 @@ h2 {
 #refresh-button,
 .range-controls button,
 .download-link,
-.csv-import input,
-.csv-import button {
+.data-form input,
+.data-form select,
+.data-form button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffaf2;
@@ -228,7 +229,7 @@ h2 {
 
 #refresh-button,
 .range-controls button,
-.csv-import button {
+.data-form button {
   cursor: pointer;
 }
 
@@ -251,7 +252,7 @@ h2 {
 }
 
 #refresh-button:disabled,
-.csv-import button:disabled {
+.data-form button:disabled {
   cursor: wait;
   opacity: .68;
 }
@@ -538,20 +539,29 @@ tbody tr:last-child td {
   padding: 18px;
 }
 
-.csv-import {
+.entry-tools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, .72fr) auto;
+  gap: 14px;
+}
+
+.data-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: 10px;
   align-items: end;
 }
 
-.csv-import label,
-.csv-import label span,
-.csv-import p {
+.manual-entry {
+  grid-template-columns: minmax(86px, .42fr) minmax(170px, .76fr) minmax(132px, .58fr) minmax(160px, .72fr) auto;
+}
+
+.data-form label,
+.data-form label span,
+.data-form p {
   min-width: 0;
 }
 
-.csv-import label span {
+.data-form label span {
   display: block;
   margin-bottom: 5px;
   color: #5d514e;
@@ -560,7 +570,8 @@ tbody tr:last-child td {
   text-transform: uppercase;
 }
 
-.csv-import input {
+.data-form input,
+.data-form select {
   width: 100%;
   min-height: 40px;
   padding: 8px 10px;
@@ -568,7 +579,7 @@ tbody tr:last-child td {
   font-size: 14px;
 }
 
-.csv-import button {
+.data-form button {
   min-height: 40px;
   padding: 8px 13px;
   background: var(--blood);
@@ -576,7 +587,7 @@ tbody tr:last-child td {
   font-weight: 760;
 }
 
-.csv-import p {
+.data-form p {
   grid-column: 1 / -1;
   font-size: 13px;
   font-weight: 700;
@@ -654,7 +665,8 @@ tbody tr:last-child td {
     margin-top: 14px;
   }
 
-  .csv-import {
+  .data-form,
+  .manual-entry {
     grid-template-columns: 1fr;
     margin-top: 14px;
   }
