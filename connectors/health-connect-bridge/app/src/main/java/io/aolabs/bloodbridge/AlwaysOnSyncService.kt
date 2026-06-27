@@ -63,7 +63,7 @@ class AlwaysOnSyncService : Service() {
 
     private suspend fun runSyncOnce() {
         if (BloodBridgeSync.token(this).isBlank()) {
-            updateStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
+            updateStatus("This APK cannot upload. Download Blood Bridge again from blood.aolabs.io.")
             return
         }
         if (!ContourMeterSync.hasBluetoothPermission(this)) {
@@ -73,7 +73,7 @@ class AlwaysOnSyncService : Service() {
 
         updateStatus("Checking CONTOUR meter and Health Connect metrics.")
         try {
-            val result = BloodBridgeSync.sync(this, days = 14)
+            val result = BloodBridgeSync.sync(this, days = 7)
             updateStatus(
                 if (result.accepted > 0) {
                     "Uploaded ${result.accepted} record(s) at ${Instant.now()}."
@@ -82,7 +82,7 @@ class AlwaysOnSyncService : Service() {
                 }
             )
         } catch (error: Exception) {
-            updateStatus("${Instant.now()}: ${error.message ?: error.javaClass.simpleName}")
+            updateStatus("${Instant.now()}: ${BloodBridgeSync.userFacingError(error)}")
         }
     }
 

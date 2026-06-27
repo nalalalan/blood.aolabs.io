@@ -380,7 +380,7 @@ manualEntryForm?.addEventListener("submit", async (event) => {
     return;
   }
   if (!token) {
-    setManualState("Fallback ingest token required.");
+    setManualState("Fallback key required.");
     return;
   }
 
@@ -432,7 +432,7 @@ csvImportForm?.addEventListener("submit", async (event) => {
     return;
   }
   if (!token) {
-    setCsvState("Fallback ingest token required.");
+    setCsvState("Fallback key required.");
     return;
   }
 

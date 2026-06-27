@@ -12,6 +12,8 @@ const HEALTH_FILE = process.env.BLOOD_HEALTH_DATA_FILE || path.join(DATA_DIR, "h
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const MAX_STORED_READINGS = Number.parseInt(process.env.BLOOD_MAX_READINGS || "5000", 10);
 const MAX_STORED_HEALTH_METRICS = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS || "12000", 10);
+const MAX_HEALTH_METRICS_PER_TYPE = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS_PER_TYPE || "30000", 10);
+const JSON_BODY_LIMIT = process.env.BLOOD_JSON_LIMIT || "8mb";
 const PUBLIC_MIN_READING_DATE = process.env.BLOOD_PUBLIC_MIN_DATE || "2026-01-01";
 const SLEEP_SUMMARY_URL = process.env.BLOOD_SLEEP_SUMMARY_URL || "https://sleep.aolabs.io/api/sleep/summary";
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -44,7 +46,7 @@ app.use(cors({
   },
   credentials: false
 }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 function extractToken(req) {
   const authorization = req.get("authorization") || "";
@@ -380,7 +382,7 @@ function sanitizeHealthPayload(payload) {
   const metrics = [];
   for (const [type, records] of specs) {
     if (!Array.isArray(records)) continue;
-    if (records.length > 2000) {
+    if (records.length > MAX_HEALTH_METRICS_PER_TYPE) {
       const error = new Error("too_many_health_metrics");
       error.status = 400;
       throw error;

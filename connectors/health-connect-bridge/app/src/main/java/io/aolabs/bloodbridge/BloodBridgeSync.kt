@@ -38,6 +38,8 @@ object BloodBridgeSync {
     const val AUTO_WORK_NAME = "blood-auto-sync"
     const val ALWAYS_ON_ENABLED_KEY = "alwaysOnUploadEnabled"
     const val LAST_AUTO_SYNC_STATUS_KEY = "lastAutoSyncStatus"
+    private const val HEALTH_UPLOAD_BATCH_RECORDS = 150
+    private const val HEALTH_UPLOAD_BATCH_BYTES = 120_000
     private const val ENDPOINT_KEY = "endpoint"
     private const val TOKEN_KEY = "token"
 
@@ -155,7 +157,7 @@ object BloodBridgeSync {
         val metricsEndpoint = healthMetricsEndpoint(endpoint)
         val token = token(context)
         if (endpoint.isBlank() || token.isBlank()) {
-            throw IllegalStateException("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
+            throw IllegalStateException("This APK cannot upload. Download Blood Bridge again from blood.aolabs.io.")
         }
 
         val statuses = mutableListOf<String>()
@@ -167,7 +169,7 @@ object BloodBridgeSync {
                 acceptedTotal += meterResult.accepted
                 statuses.add("CONTOUR meter: ${meterResult.response}")
             } catch (error: Exception) {
-                statuses.add("CONTOUR meter: ${error.message ?: error.javaClass.simpleName}")
+                statuses.add("CONTOUR meter: ${userFacingError(error)}")
             }
         } else {
             statuses.add("CONTOUR meter: ${ContourMeterSync.bluetoothStatus(context)}")
@@ -178,7 +180,7 @@ object BloodBridgeSync {
             acceptedTotal += glucoseResult.accepted
             statuses.add("Health Connect glucose: ${glucoseResult.response}")
         } catch (error: Exception) {
-            statuses.add("Health Connect glucose: ${error.message ?: error.javaClass.simpleName}")
+            statuses.add("Health Connect glucose: ${userFacingError(error)}")
         }
 
         try {
@@ -186,7 +188,7 @@ object BloodBridgeSync {
             acceptedTotal += metricsResult.accepted
             statuses.add("Health metrics: ${metricsResult.response}")
         } catch (error: Exception) {
-            statuses.add("Health metrics: ${error.message ?: error.javaClass.simpleName}")
+            statuses.add("Health metrics: ${userFacingError(error)}")
         }
 
         return if (acceptedTotal > 0) {
@@ -251,7 +253,7 @@ object BloodBridgeSync {
             return SyncResult(0, "no records found.")
         }
 
-        return SyncResult(accepted, postPayload(endpoint, token, payload))
+        return postHealthMetricsPayload(endpoint, token, payload, accepted)
     }
 
     suspend fun readGlucosePayload(client: HealthConnectClient, days: Int): JSONObject {
@@ -357,6 +359,62 @@ object BloodBridgeSync {
             .put("sleepSessions", sleepSessions)
     }
 
+    private fun postHealthMetricsPayload(
+        endpoint: String,
+        token: String,
+        payload: JSONObject,
+        accepted: Int
+    ): SyncResult {
+        val chunks = healthMetricChunks(payload)
+        if (chunks.isEmpty()) return SyncResult(0, "no records found.")
+        for (chunk in chunks) {
+            postPayload(endpoint, token, chunk)
+        }
+        return SyncResult(
+            accepted,
+            "Health Connect metrics uploaded in ${chunks.size} small batch(es)."
+        )
+    }
+
+    private fun emptyHealthPayload(source: String, capturedAt: String): JSONObject =
+        JSONObject()
+            .put("source", source.ifBlank { "health-connect" })
+            .put("capturedAt", capturedAt)
+            .put("heartRate", JSONArray())
+            .put("hrv", JSONArray())
+            .put("steps", JSONArray())
+            .put("sleepSessions", JSONArray())
+
+    private fun healthMetricChunks(payload: JSONObject): List<JSONObject> {
+        val source = payload.optString("source", "health-connect")
+        val capturedAt = payload.optString("capturedAt", Instant.now().toString())
+        val chunks = mutableListOf<JSONObject>()
+        var current = emptyHealthPayload(source, capturedAt)
+        var count = 0
+
+        fun flush() {
+            if (count == 0) return
+            chunks.add(current)
+            current = emptyHealthPayload(source, capturedAt)
+            count = 0
+        }
+
+        for (key in listOf("heartRate", "hrv", "steps", "sleepSessions")) {
+            val records = payload.optJSONArray(key) ?: continue
+            for (index in 0 until records.length()) {
+                current.getJSONArray(key).put(records.getJSONObject(index))
+                count += 1
+                val bytes = current.toString().toByteArray(Charsets.UTF_8).size
+                if (count >= HEALTH_UPLOAD_BATCH_RECORDS || bytes >= HEALTH_UPLOAD_BATCH_BYTES) {
+                    flush()
+                }
+            }
+        }
+
+        flush()
+        return chunks
+    }
+
     private fun recordToJson(record: BloodGlucoseRecord): JSONObject {
         return JSONObject()
             .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
@@ -457,9 +515,36 @@ object BloodBridgeSync {
             .orEmpty()
 
         if (code !in 200..299) {
-            throw IllegalStateException("API $code $body")
+            throw IllegalStateException(friendlyApiError(code, body))
         }
 
         return "Sync accepted by Blood API. $body"
+    }
+
+    private fun friendlyApiError(code: Int, body: String): String {
+        return when (code) {
+            401, 403 -> "Upload was rejected. Download Blood Bridge again from blood.aolabs.io."
+            413 -> "Upload batch was too large. Download Blood Bridge again so it can send smaller batches."
+            in 500..599 -> "Blood API is temporarily unavailable."
+            else -> "Blood API rejected the upload ($code). ${body.take(160)}"
+        }
+    }
+
+    fun userFacingError(error: Throwable): String {
+        val message = error.message?.trim().orEmpty()
+        return when {
+            message.contains("413", ignoreCase = true) ||
+                message.contains("entity too large", ignoreCase = true) ->
+                "Update Blood Bridge from blood.aolabs.io; the old bridge sent too much at once."
+            message.contains("too large", ignoreCase = true) ->
+                "Update Blood Bridge from blood.aolabs.io; this build sends smaller batches."
+            message.contains("unauthorized", ignoreCase = true) ||
+                message.contains("forbidden", ignoreCase = true) ||
+                message.contains("401", ignoreCase = true) ||
+                message.contains("403", ignoreCase = true) ->
+                "Download Blood Bridge again from blood.aolabs.io."
+            message.isBlank() -> "Try again after updating Blood Bridge from blood.aolabs.io."
+            else -> message.replace(Regex("\\s+"), " ").take(180)
+        }
     }
 }

@@ -13,7 +13,7 @@ class BloodSyncWorker(
         if (BloodBridgeSync.token(applicationContext).isBlank()) {
             BloodBridgeSync.saveAutoSyncStatus(
                 applicationContext,
-                "Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io."
+                "This APK cannot upload. Download Blood Bridge again from blood.aolabs.io."
             )
             return Result.success()
         }
@@ -23,7 +23,7 @@ class BloodSyncWorker(
             BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync ${Instant.now()}: ${result.accepted} record(s).")
             Result.success()
         } catch (error: Exception) {
-            val message = error.message ?: error.javaClass.simpleName
+            val message = BloodBridgeSync.userFacingError(error)
             BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync failed ${Instant.now()}: $message")
             if (message.contains("permission", ignoreCase = true) ||
                 message.contains("token", ignoreCase = true) ||

@@ -18,7 +18,7 @@ class BootReceiver : BroadcastReceiver() {
             } catch (error: Exception) {
                 BloodBridgeSync.saveAutoSyncStatus(
                     context,
-                    "Automatic upload will resume after opening Blood Bridge: ${error.message ?: error.javaClass.simpleName}"
+                    "Automatic upload will resume after opening Blood Bridge. ${BloodBridgeSync.userFacingError(error)}"
                 )
             }
         }
