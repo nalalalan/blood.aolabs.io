@@ -1,9 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="blood">
-  <rect width="128" height="128" rx="30" fill="#fff8ef"/>
-  <path d="M83 15l19 6-27 92-19-6z" fill="#f4e7dc" stroke="#5f2130" stroke-width="5" stroke-linejoin="round"/>
-  <path d="M78 31l15 5M72 51l15 5M66 72l15 5" fill="none" stroke="#d7b7aa" stroke-width="4" stroke-linecap="round"/>
-  <path d="M55 19c16 20 30 37 30 58 0 18-13 30-30 30S25 95 25 77c0-21 15-38 30-58z" fill="#9f3041"/>
-  <path d="M36 73h12l7-15 12 29 8-14h13" fill="none" stroke="#fff8ef" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M39 87c8 7 17 10 28 8" fill="none" stroke="#ffd8ca" stroke-width="6" stroke-linecap="round"/>
-  <circle cx="55" cy="95" r="6" fill="#5f2130"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="blood">
+  <defs>
+    <filter id="d" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="6" flood-color="#2b211d" flood-opacity=".17"/>
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#fffaf4" flood-opacity=".52"/>
+    </filter>
+    <linearGradient id="drop" x1="30" y1="18" x2="92" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e8a191"/>
+      <stop offset=".52" stop-color="#c55f5d"/>
+      <stop offset="1" stop-color="#7d3242"/>
+    </linearGradient>
+    <linearGradient id="strip" x1="72" y1="22" x2="104" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff8ef"/>
+      <stop offset="1" stop-color="#e6d8c6"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="30" y1="20" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8fb2a8"/>
+      <stop offset=".56" stop-color="#5f897f"/>
+      <stop offset="1" stop-color="#3f665f"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="24" y1="18" x2="108" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0cf78"/>
+      <stop offset=".58" stop-color="#c58f43"/>
+      <stop offset="1" stop-color="#83572d"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="22" y1="18" x2="108" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5b5263"/>
+      <stop offset="1" stop-color="#352f40"/>
+    </linearGradient>
+  </defs>
+  <g filter="url(#d)">
+    <g transform="rotate(13 87 68)">
+      <rect x="76" y="24" width="20" height="84" rx="8" fill="url(#strip)"/>
+      <path d="M81 41h10M81 60h10M81 79h10" fill="none" stroke="url(#gold)" stroke-width="4.5" stroke-linecap="round"/>
+      <path d="M82 94h9" fill="none" stroke="url(#teal)" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
+    <path d="M58 17c18 22 31 41 31 62 0 20-13 34-31 34S27 99 27 79c0-21 13-40 31-62Z" fill="url(#drop)"/>
+    <path d="M39 77h12l7-16 12 31 8-16h13" fill="none" stroke="#fff8ef" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M41 91c8 7 18 10 30 7" fill="none" stroke="#ffd8ca" stroke-width="6" stroke-linecap="round" opacity=".72"/>
+    <circle cx="58" cy="99" r="6" fill="url(#ink)"/>
+  </g>
 </svg>

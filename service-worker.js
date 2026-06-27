@@ -1,10 +1,10 @@
-const CACHE_NAME = "blood-aolabs-20260627-v3";
+const CACHE_NAME = "blood-aolabs-20260627-health-v1";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./icon.svg?v=20260627-meter-strip",
+  "./icon.svg?v=20260627-suite-drop",
   "./marks/ao-ink.svg"
 ];
 

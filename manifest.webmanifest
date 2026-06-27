@@ -1,7 +1,7 @@
 {
   "name": "blood.aolabs.io",
   "short_name": "blood",
-  "description": "Blood glucose graph from always-on CONTOUR NEXT ONE meter bridge uploads.",
+  "description": "Glucose, HR, HRV, sleep, and steps from automatic bridge uploads.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#8d2f3f",
   "icons": [
     {
-      "src": "./icon.svg?v=20260627-meter-strip",
+      "src": "./icon.svg?v=20260627-suite-drop",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

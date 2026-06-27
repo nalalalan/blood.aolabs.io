@@ -4,25 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>blood.aolabs.io</title>
-  <meta name="description" content="Blood glucose graph from always-on CONTOUR NEXT ONE meter bridge uploads.">
+  <meta name="description" content="Blood glucose, HR, HRV, sleep, and steps from automatic phone bridge uploads.">
   <link rel="canonical" href="https://blood.aolabs.io/">
   <meta name="theme-color" content="#f7f4ee">
   <meta name="color-scheme" content="light">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="AO Labs">
   <meta property="og:title" content="blood">
-  <meta property="og:description" content="A clear blood glucose graph from always-on CONTOUR NEXT ONE meter bridge uploads.">
+  <meta property="og:description" content="A clear glucose graph with HR, HRV, sleep, steps, and a personal anxiety estimate.">
   <meta property="og:url" content="https://blood.aolabs.io/">
-  <meta property="og:image" content="https://aolabs.io/previews/blood-20260627.png">
-  <meta property="og:image:secure_url" content="https://aolabs.io/previews/blood-20260627.png">
+  <meta property="og:image" content="https://aolabs.io/previews/blood-20260627-suite.png">
+  <meta property="og:image:secure_url" content="https://aolabs.io/previews/blood-20260627-suite.png">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="blood preview card.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="blood">
-  <meta name="twitter:description" content="A clear blood glucose graph from always-on CONTOUR NEXT ONE meter bridge uploads.">
-  <meta name="twitter:image" content="https://aolabs.io/previews/blood-20260627.png">
+  <meta name="twitter:description" content="A clear glucose graph with HR, HRV, sleep, steps, and a personal anxiety estimate.">
+  <meta name="twitter:image" content="https://aolabs.io/previews/blood-20260627-suite.png">
   <meta name="twitter:image:alt" content="blood preview card.">
   <meta name="blood-api-base" content="">
   <script>
@@ -30,10 +30,10 @@
       location.replace(`https://blood.aolabs.io/${location.search}${location.hash}`);
     }
   </script>
-  <link rel="icon" href="./icon.svg?v=20260627-meter-strip" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./icon.svg?v=20260627-meter-strip">
+  <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg?v=20260627-suite-drop">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260626-v4">
+  <link rel="stylesheet" href="./styles.css?v=20260627-health-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -42,7 +42,7 @@
         <img src="./marks/ao-ink.svg" alt="">
       </a>
       <a class="suite-app-brand" href="./" aria-label="blood home">
-        <img class="suite-app-mark" src="./icon.svg?v=20260627-meter-strip" alt="">
+        <img class="suite-app-mark" src="./icon.svg?v=20260627-suite-drop" alt="">
         <span class="suite-app-name">blood</span>
       </a>
     </div>
@@ -56,8 +56,8 @@
     <section class="graph-surface" aria-labelledby="blood-title">
       <div class="surface-head">
         <div>
-          <h1 id="blood-title">Blood glucose</h1>
-          <p id="sync-line">No readings have reached Blood yet.</p>
+          <h1 id="blood-title">Blood</h1>
+          <p id="sync-line">Waiting for automatic phone bridge upload.</p>
         </div>
         <button id="refresh-button" type="button">Refresh</button>
       </div>
@@ -74,6 +74,44 @@
         <div>
           <strong id="range-summary">No data</strong>
           <span id="range-detail">Selected range.</span>
+        </div>
+      </div>
+
+      <div class="health-strip" aria-label="current health state">
+        <div class="anxiety-readout">
+          <span>Anxiety estimate</span>
+          <div>
+            <strong id="anxiety-score">2</strong>
+            <small>/5</small>
+          </div>
+          <p id="anxiety-label">Waiting for full metrics.</p>
+        </div>
+        <div class="health-metrics">
+          <div>
+            <span>Glucose</span>
+            <strong id="metric-glucose">Waiting</strong>
+          </div>
+          <div>
+            <span>HR</span>
+            <strong id="metric-hr">Waiting</strong>
+          </div>
+          <div>
+            <span>HRV</span>
+            <strong id="metric-hrv">Waiting</strong>
+          </div>
+          <div>
+            <span>Sleep</span>
+            <strong id="metric-sleep">Waiting</strong>
+          </div>
+          <div>
+            <span>Steps</span>
+            <strong id="metric-steps">Waiting</strong>
+          </div>
+        </div>
+        <div class="health-suggestion">
+          <strong id="suggestion-time">After upload</strong>
+          <span id="suggestion-action">Blood will choose the next stabilizing action from the current outlier.</span>
+          <small id="suggestion-reason">Personal estimate, not diagnosis.</small>
         </div>
       </div>
 
@@ -118,15 +156,16 @@
     <section class="sync-section" id="sync" aria-labelledby="sync-title">
       <div>
         <h2 id="sync-title">Phone bridge</h2>
-        <p>Automatic path: CONTOUR NEXT ONE meter over Bluetooth, then always-on Blood Bridge upload, then Blood API. Health Connect is backup only.</p>
+        <p>Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, HRV, sleep, and steps, then Blood API.</p>
         <a class="download-link" href="./downloads/blood-bridge.apk" download>Download Blood Bridge APK</a>
       </div>
       <div class="sync-steps" aria-label="sync setup">
         <span>Install or update Blood Bridge</span>
         <span>Grant Bluetooth permission</span>
+        <span>Grant Health Connect metrics</span>
         <span>Tap Start automatic upload once</span>
         <span>Keep the upload notification running</span>
-        <span>Open Blood and see accepted meter readings</span>
+        <span>Open Blood and see the combined graph</span>
       </div>
     </section>
 
@@ -181,6 +220,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=20260626-v4" defer></script>
+  <script src="./app.js?v=20260627-health-v1" defer></script>
 </body>
 </html>
