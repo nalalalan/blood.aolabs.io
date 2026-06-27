@@ -1,7 +1,7 @@
 {
   "name": "blood.aolabs.io",
   "short_name": "blood",
-  "description": "Glucose, HR, HRV, sleep, and steps from automatic bridge uploads.",
+  "description": "Glucose, HR, estimated HRV, sleep, and steps from automatic bridge uploads.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

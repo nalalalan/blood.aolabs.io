@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Blood Bridge</string>
-    <string name="health_permission_rationale">Blood Bridge reads Health Connect blood glucose, heart rate, HRV, steps, and sleep records and sends them to blood.aolabs.io after setup, including periodic background sync.</string>
+    <string name="health_permission_rationale">Blood Bridge reads Health Connect blood glucose, heart rate, steps, and sleep records and sends them to blood.aolabs.io after setup, including periodic background sync.</string>
 </resources>

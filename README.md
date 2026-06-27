@@ -1,6 +1,6 @@
 # blood.aolabs.io
 
-Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, HRV, sleep, and steps.
+Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, sleep, and steps. Blood estimates HRV from heart-rate samples when true HRV/RMSSD is unavailable.
 
 The public page renders five aligned graphs for glucose, HR, HRV, sleep, and steps, plus a personal anxiety estimate from the Blood API. Viewing the graph is public so it works from any device; writing records requires the ingest token.
 
@@ -12,7 +12,7 @@ Automatic target path:
 
 Health metrics path:
 
-`Health Connect HR / HRV / sleep / steps -> Blood Android bridge -> Blood API -> aligned health graphs + anxiety estimate`
+`Health Connect HR / sleep / steps -> Blood Android bridge -> Blood API -> aligned health graphs + estimated HRV + anxiety estimate`
 
 Backup glucose path:
 
@@ -24,7 +24,7 @@ Fallbacks only:
 
 `Manual mg/dL entry -> blood.aolabs.io Write path form -> Blood API -> graph`
 
-The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, HRV, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there.
+The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there. If true HRV/RMSSD is unavailable, Blood calculates an estimated HRV from sufficiently dense HR samples.
 
 ## Phone setup
 
@@ -45,10 +45,10 @@ Health Connect metrics:
 
 1. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
 2. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
-3. Confirm the phone has sources for heart rate, HRV, steps, and sleep.
+3. Confirm the phone has sources for heart rate, steps, and sleep.
 4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
 
-HRV is source-backed only. Blood reads Health Connect RMSSD HRV records when the phone or wearable provides them; it does not fabricate HRV from ordinary heart-rate samples.
+HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from heart-rate samples and waits if the sample set is too thin.
 
 ## Local
 

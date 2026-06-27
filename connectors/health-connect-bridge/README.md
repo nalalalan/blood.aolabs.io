@@ -1,6 +1,6 @@
 # Blood Android Bridge
 
-This Android bridge reads a nearby CONTOUR NEXT ONE meter over the Bluetooth Glucose service and posts readings to `blood.aolabs.io`. It also reads Health Connect heart rate, HRV, steps, and sleep records and posts them to Blood. Health Connect `BloodGlucoseRecord` remains a backup glucose source only when another app actually writes glucose there. The bridge cannot read the Contour app's private storage.
+This Android bridge reads a nearby CONTOUR NEXT ONE meter over the Bluetooth Glucose service and posts readings to `blood.aolabs.io`. It also reads Health Connect heart rate, steps, and sleep records and posts them to Blood. HRV is calculated by Blood when source HRV is unavailable. Health Connect `BloodGlucoseRecord` remains a backup glucose source only when another app actually writes glucose there. The bridge cannot read the Contour app's private storage.
 
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
@@ -10,7 +10,7 @@ The primary automatic glucose path is the meter itself:
 
 The health metrics path is:
 
-`Health Connect HR / HRV / steps / sleep -> Blood Bridge -> blood.aolabs.io`
+`Health Connect HR / steps / sleep -> Blood Bridge -> blood.aolabs.io -> estimated HRV`
 
 Manual entry and Contour CSV import are fallback tools only when the automatic meter bridge is blocked.
 
@@ -22,6 +22,6 @@ The released APK is preconfigured for the Blood upload endpoint. Background sync
 
 Advanced diagnostics can override the glucose endpoint locally. The metrics endpoint is derived from that URL by replacing `/api/ingest/glucose-readings` with `/api/ingest/health-metrics`.
 
-On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. Grant Blood Bridge blood glucose, heart rate, HRV, steps, sleep, and background Health Connect access.
+On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. Grant Blood Bridge blood glucose, heart rate, steps, sleep, and background Health Connect access.
 
-HRV is only uploaded when Health Connect exposes real RMSSD HRV records. Ordinary heart-rate samples are not treated as HRV.
+True HRV is uploaded only when Health Connect exposes real RMSSD HRV records. Missing HRV permission does not block metric sync; Blood calculates a labeled estimate from sufficiently dense heart-rate samples.

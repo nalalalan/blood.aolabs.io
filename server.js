@@ -801,6 +801,16 @@ function metricAverage(metrics, type, days = 14) {
   return values.length ? average(values) : null;
 }
 
+function median(values) {
+  const sorted = values
+    .filter((value) => Number.isFinite(Number(value)))
+    .map(Number)
+    .sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 function metricTrend(metrics, type, limit = 900) {
   return metrics
     .filter((metric) => metric.type === type)
@@ -816,8 +826,102 @@ function metricTrend(metrics, type, limit = 900) {
       date: metric.date,
       value: Number(metric.value),
       unit: metric.unit,
-      capturedAt: metric.capturedAt
+      capturedAt: metric.capturedAt,
+      derived: metric.derived,
+      estimated: metric.estimated,
+      basis: metric.basis,
+      quality: metric.quality,
+      sampleCount: metric.sampleCount,
+      pairCount: metric.pairCount,
+      medianGapMinutes: metric.medianGapMinutes
     }));
+}
+
+function calculatedHrvTrend(metrics, limit = 90) {
+  const byDate = new Map();
+  for (const metric of metrics.filter((item) => item.type === "heart_rate")) {
+    const value = Number(metric.value);
+    if (!metric?.date || !metric?.measuredAt || !Number.isFinite(value) || value <= 0) continue;
+    const time = new Date(metric.measuredAt).getTime();
+    if (!Number.isFinite(time)) continue;
+    const records = byDate.get(metric.date) || [];
+    records.push({ ...metric, value, time, rrMs: 60000 / value });
+    byDate.set(metric.date, records);
+  }
+
+  const estimates = [];
+  for (const [date, records] of byDate.entries()) {
+    const byTime = new Map();
+    for (const record of records) {
+      const existing = byTime.get(record.measuredAt);
+      if (!existing || new Date(record.capturedAt || 0).getTime() > new Date(existing.capturedAt || 0).getTime()) {
+        byTime.set(record.measuredAt, record);
+      }
+    }
+    const points = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+    if (points.length < 3) continue;
+
+    const rrDiffSquares = [];
+    const gapMinutes = [];
+    for (let index = 1; index < points.length; index += 1) {
+      const gapMs = points[index].time - points[index - 1].time;
+      if (gapMs <= 0 || gapMs > 45 * 60 * 1000) continue;
+      const diff = points[index].rrMs - points[index - 1].rrMs;
+      rrDiffSquares.push(diff * diff);
+      gapMinutes.push(gapMs / 60_000);
+    }
+    if (rrDiffSquares.length < 2) continue;
+
+    const rawValue = Math.sqrt(rrDiffSquares.reduce((sum, value) => sum + value, 0) / rrDiffSquares.length);
+    const value = Math.max(1, Math.min(300, Math.round(rawValue)));
+    const medianGap = median(gapMinutes) || 0;
+    const last = points[points.length - 1];
+    const metric = {
+      metricId: "",
+      clientRecordId: `calculated-hrv-${date}`,
+      type: "hrv",
+      source: "blood-calculated",
+      sourcePackage: last.sourcePackage || "",
+      measuredAt: last.measuredAt,
+      date,
+      value,
+      unit: "ms_est",
+      capturedAt: points
+        .map((point) => point.capturedAt)
+        .filter(Boolean)
+        .sort()
+        .at(-1) || last.capturedAt || null,
+      derived: true,
+      estimated: true,
+      basis: "heart_rate_samples",
+      quality: medianGap <= 5 ? "dense_hr_estimate" : medianGap <= 15 ? "sampled_hr_estimate" : "sparse_hr_estimate",
+      sampleCount: points.length,
+      pairCount: rrDiffSquares.length,
+      medianGapMinutes: Number(medianGap.toFixed(1))
+    };
+    metric.metricId = stableMetricId(metric);
+    estimates.push(metric);
+  }
+
+  return estimates
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+    .slice(-limit);
+}
+
+function hrvTrend(metrics, limit = 900) {
+  const trueHrv = metricTrend(metrics, "hrv", limit)
+    .map((metric) => ({
+      ...metric,
+      derived: Boolean(metric.derived),
+      estimated: Boolean(metric.estimated),
+      basis: metric.basis || "health_connect_rmssd"
+    }));
+  const trueDates = new Set(trueHrv.map((metric) => metric.date).filter(Boolean));
+  const calculated = calculatedHrvTrend(metrics, limit)
+    .filter((metric) => !trueDates.has(metric.date));
+  return [...trueHrv, ...calculated]
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+    .slice(-limit);
 }
 
 function sleepTrend(metrics, fallback = null, limit = 90) {
@@ -939,15 +1043,16 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
 
   if (hrv?.value) {
     const value = hrv.value;
+    const labelPrefix = hrv.estimated || hrv.derived ? "estimated HRV" : "HRV";
     if (value < 25) {
       raw += 0.8;
-      pushFactor(factors, "hrv", "HRV low", 0.8, `${value} ms HRV is low.`, "Reduce task switching and delay caffeine until after food/water.");
+      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Reduce task switching and delay caffeine until after food/water.");
     } else if (value < 40) {
       raw += 0.45;
-      pushFactor(factors, "hrv", "HRV soft", 0.45, `${value} ms HRV is soft.`, "Use one quiet reset before the next work block.");
+      pushFactor(factors, "hrv", `${labelPrefix} soft`, 0.45, `${value} ms ${labelPrefix} is soft.`, "Use one quiet reset before the next work block.");
     } else if (value >= 65) {
       raw -= 0.25;
-      pushFactor(factors, "hrv", "HRV strong", -0.25, `${value} ms HRV is strong.`, "Use the high-recovery window.");
+      pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Use the high-recovery window.");
     }
   }
 
@@ -1013,7 +1118,8 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
   const sleep = latestMetric(normalized, "sleep") || latestSleepFromFallback(sleepFallback);
   const heartRate = latestMetric(normalized, "heart_rate");
-  const hrv = latestMetric(normalized, "hrv");
+  const hrvSeries = hrvTrend(normalized);
+  const hrv = hrvSeries.at(-1) || null;
   const recentSteps = sumRecentSteps(normalized, 24);
   const latestStepsMetric = latestMetric(normalized, "steps");
   const lastCapturedAt = normalized
@@ -1043,13 +1149,13 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     latest,
     trends: {
       heartRate: metricTrend(normalized, "heart_rate"),
-      hrv: metricTrend(normalized, "hrv"),
+      hrv: hrvSeries,
       sleep: sleepTrend(normalized, sleep),
       steps: stepsTrend(normalized)
     },
     baselines: {
       heartRateAvg14d: metricAverage(normalized, "heart_rate", 14),
-      hrvAvg14d: metricAverage(normalized, "hrv", 14),
+      hrvAvg14d: metricAverage(hrvSeries, "hrv", 14),
       sleepAvg14dMinutes: metricAverage(normalized, "sleep", 14),
       stepsAvg14d: metricAverage(normalized, "steps", 14)
     },
@@ -1099,7 +1205,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       days: [],
       health,
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
-      message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, HRV, sleep, and steps."
+      message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, sleep, and steps, and Blood estimates HRV from heart-rate samples."
     };
   }
 

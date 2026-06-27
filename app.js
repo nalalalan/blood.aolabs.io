@@ -72,6 +72,11 @@ function formatNumber(value) {
   return Math.round(number).toLocaleString();
 }
 
+function formatHrvMetric(metric) {
+  if (!metric?.value || !Number.isFinite(Number(metric.value))) return "";
+  return `${Math.round(Number(metric.value))} ms${metric.estimated || metric.derived ? " est" : ""}`;
+}
+
 function daysAgo(days) {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -121,7 +126,7 @@ function buildSeries(data) {
   const currentLabels = {
     glucose: latestGlucose?.valueMgDl ? `${latestGlucose.valueMgDl} mg/dL` : "",
     "heart-rate": latest.heartRate?.value ? `${latest.heartRate.value} bpm` : "",
-    hrv: latest.hrv?.value ? `${latest.hrv.value} ms` : "",
+    hrv: formatHrvMetric(latest.hrv),
     sleep: latestSleepMinutes != null && Number.isFinite(Number(latestSleepMinutes))
       ? `${(Number(latestSleepMinutes) / 60).toFixed(1)} h`
       : "",
@@ -175,7 +180,7 @@ function buildSeries(data) {
       key: "hrv",
       title: "HRV",
       unit: "ms",
-      empty: "Waiting for a true Health Connect HRV/RMSSD record.",
+      empty: "Waiting for enough heart-rate samples.",
       currentLabel: currentLabels.hrv,
       yFloor: 0,
       yCeil: 100,
@@ -183,7 +188,7 @@ function buildSeries(data) {
       points: withLatest([...(healthTrends.hrv || [])].map((metric) => ({
         measuredAt: metric.measuredAt,
         value: metric.value,
-        title: `${formatDateTime(metric.measuredAt)}: ${metric.value} ms`
+        title: `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)}${metric.quality ? ` (${metric.quality.replace(/_/g, " ")})` : ""}`
       })), latest.hrv)
     },
     {
@@ -413,7 +418,7 @@ function renderHealth(data) {
 
   setMetricValue(metricGlucose, glucose?.valueMgDl ? `${glucose.valueMgDl} mg/dL` : "");
   setMetricValue(metricHr, heartRate?.value ? `${heartRate.value} bpm` : "");
-  setMetricValue(metricHrv, hrv?.value ? `${hrv.value} ms` : "");
+  setMetricValue(metricHrv, formatHrvMetric(hrv));
   setMetricValue(metricSleep, asleepMinutes != null && Number.isFinite(Number(asleepMinutes)) ? formatHours(asleepMinutes) : "");
   setMetricValue(metricSteps, stepCount != null && Number.isFinite(Number(stepCount)) ? `${formatNumber(stepCount)} steps` : "");
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "blood-aolabs-20260627-invisible-graphs-v2";
+const CACHE_NAME = "blood-aolabs-20260627-calculated-hrv-v1";
 const ASSETS = [
   "./",
   "./index.html",

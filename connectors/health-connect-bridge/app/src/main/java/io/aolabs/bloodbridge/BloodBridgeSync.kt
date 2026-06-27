@@ -53,7 +53,6 @@ object BloodBridgeSync {
     val permissions: Set<String> = setOf(
         glucosePermission,
         heartRatePermission,
-        hrvPermission,
         stepsPermission,
         sleepPermission,
         backgroundPermission
@@ -240,7 +239,7 @@ object BloodBridgeSync {
 
         val client = HealthConnectClient.getOrCreate(context)
         val granted = client.permissionController.getGrantedPermissions()
-        val missing = listOf(heartRatePermission, hrvPermission, stepsPermission, sleepPermission, backgroundPermission)
+        val missing = listOf(heartRatePermission, stepsPermission, sleepPermission, backgroundPermission)
             .filter { permission -> !granted.contains(permission) }
         if (missing.isNotEmpty()) {
             throw IllegalStateException("metric permission required.")
@@ -283,6 +282,7 @@ object BloodBridgeSync {
         val end = Instant.now().plus(1, ChronoUnit.DAYS)
         val start = Instant.now().minus(days.toLong() + 1, ChronoUnit.DAYS)
         val range = TimeRangeFilter.between(start, end)
+        val granted = client.permissionController.getGrantedPermissions()
 
         val heartRate = JSONArray()
         val heartRateResponse = client.readRecords(
@@ -305,21 +305,23 @@ object BloodBridgeSync {
         }
 
         val hrv = JSONArray()
-        val hrvResponse = client.readRecords(
-            ReadRecordsRequest(
-                recordType = HeartRateVariabilityRmssdRecord::class,
-                timeRangeFilter = range
+        if (granted.contains(hrvPermission)) {
+            val hrvResponse = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateVariabilityRmssdRecord::class,
+                    timeRangeFilter = range
+                )
             )
-        )
-        for (record in hrvResponse.records) {
-            hrv.put(
-                JSONObject()
-                    .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
-                    .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                    .put("measuredAt", record.time.toString())
-                    .put("zoneOffset", record.zoneOffset?.id ?: "")
-                    .put("rmssdMs", record.heartRateVariabilityMillis)
-            )
+            for (record in hrvResponse.records) {
+                hrv.put(
+                    JSONObject()
+                        .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+                        .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                        .put("measuredAt", record.time.toString())
+                        .put("zoneOffset", record.zoneOffset?.id ?: "")
+                        .put("rmssdMs", record.heartRateVariabilityMillis)
+                )
+            }
         }
 
         val steps = JSONArray()

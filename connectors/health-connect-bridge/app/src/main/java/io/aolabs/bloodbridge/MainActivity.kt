@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, HRV, steps, and sleep, then blood.aolabs.io."
+            text = "CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, steps, and sleep. Blood calculates HRV when source HRV is unavailable."
             textSize = 15f
             setPadding(0, padding / 2, 0, padding)
         })
