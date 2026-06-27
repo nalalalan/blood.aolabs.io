@@ -690,12 +690,13 @@ tbody tr:last-child td {
   td {
     padding: 10px 9px;
     font-size: 12px;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
+    word-break: normal;
   }
 
   th:nth-child(1),
   td:nth-child(1) {
-    width: 37%;
+    width: 38%;
   }
 
   th:nth-child(2),
@@ -704,10 +705,13 @@ tbody tr:last-child td {
   }
 
   th:nth-child(3),
-  td:nth-child(3),
+  td:nth-child(3) {
+    width: 14%;
+  }
+
   th:nth-child(4),
   td:nth-child(4) {
-    width: 22%;
+    width: 29%;
   }
 
   .sync-steps {

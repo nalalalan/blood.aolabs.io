@@ -57,12 +57,13 @@ function daysAgo(days) {
   return date.getTime();
 }
 
-function sourceLabel(reading) {
+function sourceLabel(reading, compact = false) {
   if (!reading) return "";
-  if (reading.source === "contour-meter-ble") return "CONTOUR meter bridge";
-  if (reading.source === "contour-csv") return "Contour CSV";
-  if (reading.source === "manual-entry") return "Manual entry";
+  if (reading.source === "contour-meter-ble") return compact ? "Meter bridge" : "CONTOUR meter bridge";
+  if (reading.source === "contour-csv") return compact ? "CSV" : "Contour CSV";
+  if (reading.source === "manual-entry") return compact ? "Manual" : "Manual entry";
   if (reading.source === "health-connect") {
+    if (compact) return "Health Connect";
     return reading.sourcePackage ? `Health Connect / ${reading.sourcePackage}` : "Health Connect";
   }
   return reading.source || "manual";
@@ -208,7 +209,7 @@ function renderTable(data) {
       <td>${formatDateTime(reading.measuredAt)}</td>
       <td><strong>${reading.valueMgDl}</strong></td>
       <td>${markerLabel(reading) || ""}</td>
-      <td>${sourceLabel(reading)}</td>
+      <td>${sourceLabel(reading, true)}</td>
     </tr>
   `).join("");
 }
