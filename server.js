@@ -8,9 +8,12 @@ const app = express();
 const PORT = Number.parseInt(process.env.PORT || "3057", 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = process.env.BLOOD_DATA_FILE || path.join(DATA_DIR, "glucose-readings.json");
+const HEALTH_FILE = process.env.BLOOD_HEALTH_DATA_FILE || path.join(DATA_DIR, "health-metrics.json");
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const MAX_STORED_READINGS = Number.parseInt(process.env.BLOOD_MAX_READINGS || "5000", 10);
+const MAX_STORED_HEALTH_METRICS = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS || "12000", 10);
 const PUBLIC_MIN_READING_DATE = process.env.BLOOD_PUBLIC_MIN_DATE || "2026-01-01";
+const SLEEP_SUMMARY_URL = process.env.BLOOD_SLEEP_SUMMARY_URL || "https://sleep.aolabs.io/api/sleep/summary";
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://blood.aolabs.io",
   "https://aolabs.io",
@@ -198,6 +201,202 @@ function sanitizePayload(payload) {
   return readings.map((reading) => sanitizeReading(reading, capturedAt, source));
 }
 
+function clampText(value, max = 180) {
+  return String(value || "").slice(0, max);
+}
+
+function metricDateFromTime(value, zoneOffset) {
+  return readingDateFromTime(value, zoneOffset);
+}
+
+function stableMetricId(metric) {
+  const basis = [
+    metric.metricId,
+    metric.clientRecordId,
+    metric.type,
+    metric.sourcePackage,
+    metric.measuredAt,
+    metric.startTime,
+    metric.endTime,
+    metric.value
+  ].filter(Boolean).join("|");
+  return crypto.createHash("sha256").update(basis).digest("hex").slice(0, 40);
+}
+
+function numberInRange(value, min, max, field) {
+  const number = normalizeNumber(value);
+  if (!Number.isFinite(number) || number < min || number > max) {
+    const error = new Error(`invalid_${field}`);
+    error.status = 400;
+    throw error;
+  }
+  return number;
+}
+
+function sleepStageTotals(stages = []) {
+  const totals = {
+    awake: 0,
+    light: 0,
+    deep: 0,
+    rem: 0,
+    sleeping: 0,
+    unknown: 0,
+    outOfBed: 0
+  };
+  for (const stage of Array.isArray(stages) ? stages : []) {
+    const start = new Date(stage.startTime).getTime();
+    const end = new Date(stage.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const minutes = Math.round((end - start) / 60_000);
+    const key = String(stage.stage || "").toLowerCase().replace(/[^a-z]/g, "");
+    if (key.includes("awake")) totals.awake += minutes;
+    else if (key.includes("light")) totals.light += minutes;
+    else if (key.includes("deep")) totals.deep += minutes;
+    else if (key.includes("rem")) totals.rem += minutes;
+    else if (key.includes("outofbed")) totals.outOfBed += minutes;
+    else if (key.includes("sleeping")) totals.sleeping += minutes;
+    else totals.unknown += minutes;
+  }
+  return totals;
+}
+
+function sanitizeHealthMetric(metric, type, capturedAt, source) {
+  if (!metric || typeof metric !== "object") {
+    const error = new Error("invalid_health_metric");
+    error.status = 400;
+    throw error;
+  }
+
+  if (type === "heart_rate") {
+    const measuredAt = parseTime(metric.measuredAt || metric.time || metric.timestamp, "heart_rate_time");
+    const value = Math.round(numberInRange(metric.valueBpm ?? metric.bpm ?? metric.value, 25, 240, "heart_rate"));
+    const sanitized = {
+      metricId: "",
+      clientRecordId: clampText(metric.clientRecordId || metric.metricId),
+      type,
+      source: clampText(source || metric.source || "health-connect", 80),
+      sourcePackage: clampText(metric.sourcePackage),
+      measuredAt,
+      date: metricDateFromTime(measuredAt, metric.zoneOffset),
+      value,
+      unit: "bpm",
+      capturedAt
+    };
+    sanitized.metricId = stableMetricId(sanitized);
+    return sanitized;
+  }
+
+  if (type === "hrv") {
+    const measuredAt = parseTime(metric.measuredAt || metric.time || metric.timestamp, "hrv_time");
+    const value = Math.round(numberInRange(metric.rmssdMs ?? metric.valueMs ?? metric.value, 1, 300, "hrv"));
+    const sanitized = {
+      metricId: "",
+      clientRecordId: clampText(metric.clientRecordId || metric.metricId),
+      type,
+      source: clampText(source || metric.source || "health-connect", 80),
+      sourcePackage: clampText(metric.sourcePackage),
+      measuredAt,
+      date: metricDateFromTime(measuredAt, metric.zoneOffset),
+      value,
+      unit: "ms",
+      capturedAt
+    };
+    sanitized.metricId = stableMetricId(sanitized);
+    return sanitized;
+  }
+
+  if (type === "steps") {
+    const startTime = parseTime(metric.startTime || metric.start || metric.measuredAt, "steps_start");
+    const endTime = parseTime(metric.endTime || metric.end || metric.measuredAt, "steps_end");
+    const value = Math.round(numberInRange(metric.count ?? metric.steps ?? metric.value, 0, 200000, "steps"));
+    const sanitized = {
+      metricId: "",
+      clientRecordId: clampText(metric.clientRecordId || metric.metricId),
+      type,
+      source: clampText(source || metric.source || "health-connect", 80),
+      sourcePackage: clampText(metric.sourcePackage),
+      startTime,
+      endTime,
+      measuredAt: endTime,
+      date: metricDateFromTime(endTime, metric.zoneOffset),
+      value,
+      unit: "steps",
+      capturedAt
+    };
+    sanitized.metricId = stableMetricId(sanitized);
+    return sanitized;
+  }
+
+  if (type === "sleep") {
+    const startTime = parseTime(metric.startTime || metric.start, "sleep_start");
+    const endTime = parseTime(metric.endTime || metric.end, "sleep_end");
+    const start = new Date(startTime).getTime();
+    const end = new Date(endTime).getTime();
+    if (end <= start) {
+      const error = new Error("invalid_sleep_duration");
+      error.status = 400;
+      throw error;
+    }
+    const durationMinutes = Math.round((end - start) / 60_000);
+    const stageMinutes = sleepStageTotals(metric.stages);
+    const awakeMinutes = stageMinutes.awake + stageMinutes.outOfBed;
+    const asleepMinutes = Math.max(0, durationMinutes - awakeMinutes);
+    const sanitized = {
+      metricId: "",
+      clientRecordId: clampText(metric.clientRecordId || metric.sessionId || metric.metricId),
+      type,
+      source: clampText(source || metric.source || "health-connect", 80),
+      sourcePackage: clampText(metric.sourcePackage),
+      startTime,
+      endTime,
+      measuredAt: endTime,
+      date: metric.sleepDate || metricDateFromTime(endTime, metric.endZoneOffset || metric.zoneOffset),
+      value: asleepMinutes,
+      unit: "minutes_asleep",
+      durationMinutes,
+      asleepMinutes,
+      awakeMinutes,
+      stageMinutes,
+      capturedAt
+    };
+    sanitized.metricId = stableMetricId(sanitized);
+    return sanitized;
+  }
+
+  const error = new Error("unsupported_health_metric");
+  error.status = 400;
+  throw error;
+}
+
+function sanitizeHealthPayload(payload) {
+  const capturedAt = parseTime(payload?.capturedAt || new Date().toISOString(), "captured_at");
+  const source = payload?.source || "health-connect";
+  const specs = [
+    ["heart_rate", payload?.heartRate || payload?.heartRates || []],
+    ["hrv", payload?.hrv || payload?.heartRateVariability || []],
+    ["steps", payload?.steps || []],
+    ["sleep", payload?.sleepSessions || payload?.sleep || []]
+  ];
+  const metrics = [];
+  for (const [type, records] of specs) {
+    if (!Array.isArray(records)) continue;
+    if (records.length > 2000) {
+      const error = new Error("too_many_health_metrics");
+      error.status = 400;
+      throw error;
+    }
+    for (const record of records) {
+      metrics.push(sanitizeHealthMetric(record, type, capturedAt, source));
+    }
+  }
+  if (!metrics.length) {
+    const error = new Error("no_health_metrics");
+    error.status = 400;
+    throw error;
+  }
+  return metrics;
+}
+
 function parseCsvRows(text) {
   const rows = [];
   let row = [];
@@ -368,6 +567,15 @@ async function ensureDb() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS blood_readings_measured_at_idx ON blood_readings (measured_at DESC);
+      CREATE TABLE IF NOT EXISTS health_metrics (
+        metric_id TEXT PRIMARY KEY,
+        metric_type TEXT NOT NULL,
+        measured_at TIMESTAMPTZ NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        payload JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS health_metrics_type_time_idx ON health_metrics (metric_type, measured_at DESC);
     `);
   }
   await dbReadyPromise;
@@ -394,6 +602,27 @@ async function writeJsonReadings(readings) {
   await fs.rename(tmp, DATA_FILE);
 }
 
+async function readJsonHealthMetrics() {
+  try {
+    const raw = await fs.readFile(HEALTH_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.metrics) ? parsed.metrics : [];
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function writeJsonHealthMetrics(metrics) {
+  await fs.mkdir(path.dirname(HEALTH_FILE), { recursive: true });
+  const tmp = `${HEALTH_FILE}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    metrics
+  }, null, 2));
+  await fs.rename(tmp, HEALTH_FILE);
+}
+
 async function readReadings() {
   const pool = await getPgPool();
   if (pool) {
@@ -405,6 +634,19 @@ async function readReadings() {
     return result.rows.map((row) => row.payload);
   }
   return readJsonReadings();
+}
+
+async function readHealthMetrics() {
+  const pool = await getPgPool();
+  if (pool) {
+    await ensureDb();
+    const result = await pool.query(
+      "SELECT payload FROM health_metrics ORDER BY measured_at DESC LIMIT $1",
+      [MAX_STORED_HEALTH_METRICS]
+    );
+    return result.rows.map((row) => row.payload);
+  }
+  return readJsonHealthMetrics();
 }
 
 async function storeReadings(readings) {
@@ -445,6 +687,45 @@ async function storeReadings(readings) {
   await writeJsonReadings(next);
 }
 
+async function storeHealthMetrics(metrics) {
+  const pool = await getPgPool();
+  if (pool) {
+    await ensureDb();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const metric of metrics) {
+        await client.query(`
+          INSERT INTO health_metrics (metric_id, metric_type, measured_at, captured_at, payload, updated_at)
+          VALUES ($1, $2, $3, $4, $5, now())
+          ON CONFLICT (metric_id)
+          DO UPDATE SET
+            metric_type = EXCLUDED.metric_type,
+            measured_at = EXCLUDED.measured_at,
+            captured_at = EXCLUDED.captured_at,
+            payload = EXCLUDED.payload,
+            updated_at = now()
+        `, [metric.metricId, metric.type, metric.measuredAt, metric.capturedAt, metric]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return;
+  }
+
+  const existing = await readJsonHealthMetrics();
+  const byId = new Map(existing.map((metric) => [metric.metricId, metric]));
+  for (const metric of metrics) byId.set(metric.metricId, metric);
+  const next = Array.from(byId.values())
+    .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
+    .slice(0, MAX_STORED_HEALTH_METRICS);
+  await writeJsonHealthMetrics(next);
+}
+
 function average(values) {
   if (!values.length) return null;
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
@@ -469,7 +750,246 @@ function dayStats(readings) {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
-function summarizeReadings(readings) {
+function latestMetric(metrics, type) {
+  return metrics
+    .filter((metric) => metric.type === type)
+    .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())[0] || null;
+}
+
+function latestSleepFromFallback(sleepSummary) {
+  const latest = sleepSummary?.latest;
+  if (!latest?.endTime) return null;
+  return {
+    metricId: `sleep-api-${latest.sleepDate || latest.endTime}`,
+    type: "sleep",
+    source: "sleep-api",
+    sourcePackage: latest.sourcePackage || "",
+    startTime: latest.startTime,
+    endTime: latest.endTime,
+    measuredAt: latest.endTime,
+    date: latest.sleepDate || latest.endTime.slice(0, 10),
+    value: latest.asleepMinutes ?? Math.max(0, (latest.durationMinutes || 0) - (latest.awakeMinutes || 0)),
+    unit: "minutes_asleep",
+    durationMinutes: latest.durationMinutes || null,
+    asleepMinutes: latest.asleepMinutes ?? null,
+    awakeMinutes: latest.awakeMinutes ?? null,
+    stageMinutes: latest.stageMinutes || {},
+    capturedAt: latest.capturedAt || sleepSummary.lastCapturedAt || null
+  };
+}
+
+function sumRecentSteps(metrics, hours = 24) {
+  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+  const values = metrics
+    .filter((metric) => metric.type === "steps")
+    .filter((metric) => new Date(metric.measuredAt).getTime() >= cutoff)
+    .map((metric) => Number(metric.value || 0))
+    .filter(Number.isFinite);
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function metricAverage(metrics, type, days = 14) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const values = metrics
+    .filter((metric) => metric.type === type)
+    .filter((metric) => new Date(metric.measuredAt).getTime() >= cutoff)
+    .map((metric) => Number(metric.value))
+    .filter(Number.isFinite);
+  return values.length ? average(values) : null;
+}
+
+function easternHour(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    hour12: false
+  }).formatToParts(date);
+  return Number.parseInt(parts.find((part) => part.type === "hour")?.value || "0", 10);
+}
+
+function nextStabilizingTime(hour = easternHour()) {
+  if (hour < 10) return "10:30 AM";
+  if (hour < 14) return "2:30 PM";
+  if (hour < 18) return "6:30 PM";
+  return "tomorrow morning";
+}
+
+function pushFactor(factors, key, label, points, reason, action) {
+  if (!Number.isFinite(points) || points === 0) return;
+  factors.push({ key, label, points: Number(points.toFixed(2)), reason, action });
+}
+
+function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
+  const factors = [];
+  let raw = 2.2;
+
+  if (glucose?.valueMgDl) {
+    const value = glucose.valueMgDl;
+    if (value < 70) {
+      raw += 1.0;
+      pushFactor(factors, "glucose", "glucose low", 1.0, `${value} mg/dL is below range.`, "Pair a quick carb with protein, then recheck the graph.");
+    } else if (value > 180) {
+      raw += 0.9;
+      pushFactor(factors, "glucose", "glucose high", 0.9, `${value} mg/dL is above range.`, "Walk 10 minutes after food and keep the next meal steadier.");
+    } else if (value < 82 || value > 140) {
+      raw += 0.35;
+      pushFactor(factors, "glucose", "glucose edge", 0.35, `${value} mg/dL is near the edge of the target band.`, "Use protein/fiber first at the next meal.");
+    } else {
+      raw -= 0.15;
+      pushFactor(factors, "glucose", "glucose stable", -0.15, `${value} mg/dL is inside the target band.`, "Keep meals boringly steady.");
+    }
+  }
+
+  if (heartRate?.value) {
+    const value = heartRate.value;
+    if (value >= 100) {
+      raw += 0.85;
+      pushFactor(factors, "heart_rate", "HR high", 0.85, `${value} bpm is elevated.`, "Do three minutes of slow exhale breathing before the next task.");
+    } else if (value >= 85) {
+      raw += 0.4;
+      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm is raised.`, "Take a short walk without checking the phone.");
+    } else if (value >= 55 && value <= 75) {
+      raw -= 0.15;
+      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm is calm.`, "Use the calm window for one hard thing.");
+    }
+  }
+
+  if (hrv?.value) {
+    const value = hrv.value;
+    if (value < 25) {
+      raw += 0.8;
+      pushFactor(factors, "hrv", "HRV low", 0.8, `${value} ms HRV is low.`, "Reduce task switching and delay caffeine until after food/water.");
+    } else if (value < 40) {
+      raw += 0.45;
+      pushFactor(factors, "hrv", "HRV soft", 0.45, `${value} ms HRV is soft.`, "Use one quiet reset before the next work block.");
+    } else if (value >= 65) {
+      raw -= 0.25;
+      pushFactor(factors, "hrv", "HRV strong", -0.25, `${value} ms HRV is strong.`, "Use the high-recovery window.");
+    }
+  }
+
+  if (sleep?.asleepMinutes || sleep?.value) {
+    const minutes = Number(sleep.asleepMinutes ?? sleep.value);
+    const hours = minutes / 60;
+    if (minutes < 300) {
+      raw += 0.9;
+      pushFactor(factors, "sleep", "sleep short", 0.9, `${hours.toFixed(1)}h asleep is short.`, "Keep the first work block smaller and get bright light early.");
+    } else if (minutes < 360) {
+      raw += 0.45;
+      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Protect one low-friction reset window.");
+    } else if (minutes >= 420) {
+      raw -= 0.25;
+      pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "Spend the recovery on one concrete thing.");
+    }
+  }
+
+  if (Number.isFinite(recentSteps)) {
+    if (recentSteps < 1500) {
+      raw += 0.35;
+      pushFactor(factors, "steps", "steps low", 0.35, `${recentSteps} steps in the recent window is low.`, "Add one 10-minute walk at the next stable time.");
+    } else if (recentSteps < 4000) {
+      raw += 0.15;
+      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Use a short walk as the reset.");
+    } else if (recentSteps >= 8000) {
+      raw -= 0.25;
+      pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Keep movement steady, not intense.");
+    }
+  }
+
+  const score = Math.max(1, Math.min(5, Math.round(raw)));
+  const primary = [...factors].sort((a, b) => b.points - a.points)[0] || null;
+  const time = nextStabilizingTime();
+  const suggestion = primary
+    ? {
+      time,
+      action: primary.action,
+      reason: primary.reason,
+      source: primary.key
+    }
+    : {
+      time,
+      action: "Keep the next block simple and repeat the steady pattern.",
+      reason: "No current outlier is available.",
+      source: "none"
+    };
+
+  return {
+    score,
+    scale: "1-5",
+    label: score <= 1 ? "low" : score <= 2 ? "steady" : score === 3 ? "watch" : score === 4 ? "high" : "very high",
+    raw: Number(raw.toFixed(2)),
+    factors,
+    suggestion,
+    note: "Personal stabilization estimate from current health signals; not a diagnosis."
+  };
+}
+
+function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucose = null) {
+  const normalized = metrics
+    .filter((metric) => metric?.type && metric?.measuredAt)
+    .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
+  const sleep = latestMetric(normalized, "sleep") || latestSleepFromFallback(sleepFallback);
+  const heartRate = latestMetric(normalized, "heart_rate");
+  const hrv = latestMetric(normalized, "hrv");
+  const recentSteps = sumRecentSteps(normalized, 24);
+  const latestStepsMetric = latestMetric(normalized, "steps");
+  const lastCapturedAt = normalized
+    .map((metric) => metric.capturedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || sleep?.capturedAt || null;
+
+  const latest = {
+    glucose: latestGlucose,
+    heartRate,
+    hrv,
+    sleep,
+    steps: {
+      type: "steps",
+      value: recentSteps,
+      unit: "steps_24h",
+      measuredAt: latestStepsMetric?.measuredAt || null,
+      capturedAt: latestStepsMetric?.capturedAt || null
+    }
+  };
+
+  return {
+    status: normalized.length || sleep ? "connected" : "waiting_for_health_metrics",
+    metricCount: normalized.length,
+    lastCapturedAt,
+    latest,
+    baselines: {
+      heartRateAvg14d: metricAverage(normalized, "heart_rate", 14),
+      hrvAvg14d: metricAverage(normalized, "hrv", 14),
+      sleepAvg14dMinutes: metricAverage(normalized, "sleep", 14),
+      stepsAvg14d: metricAverage(normalized, "steps", 14)
+    },
+    anxiety: estimateAnxietyState({
+      glucose: latestGlucose,
+      heartRate,
+      hrv,
+      sleep,
+      recentSteps
+    })
+  };
+}
+
+async function fetchSleepSummaryFallback() {
+  if (!SLEEP_SUMMARY_URL) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const response = await fetch(SLEEP_SUMMARY_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function summarizeReadings(readings, health = summarizeHealthMetrics()) {
   const normalized = readings
     .filter((reading) => reading?.measuredAt && Number.isFinite(Number(reading.valueMgDl)))
     .map((reading) => ({
@@ -489,8 +1009,9 @@ function summarizeReadings(readings) {
       readings: [],
       trend: [],
       days: [],
+      health,
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
-      message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth bridge upload; Health Connect is backup only if glucose records exist there."
+      message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, HRV, sleep, and steps."
     };
   }
 
@@ -513,6 +1034,7 @@ function summarizeReadings(readings) {
       maxMgDl: Math.max(...values),
       avgMgDl: average(values)
     },
+    health,
     readings: normalized.slice(0, 30),
     trend: trendDesc.reverse(),
     days: dayStats(normalized).slice(0, 45)
@@ -534,7 +1056,10 @@ app.get("/api/health", async (_req, res) => {
 
 app.get("/api/blood/summary", async (_req, res, next) => {
   try {
-    res.json(summarizeReadings(await readReadings()));
+    const readings = await readReadings();
+    const glucoseOnly = summarizeReadings(readings);
+    const health = summarizeHealthMetrics(await readHealthMetrics(), await fetchSleepSummaryFallback(), glucoseOnly.latest);
+    res.json(summarizeReadings(readings, health));
   } catch (error) {
     next(error);
   }
@@ -545,7 +1070,8 @@ app.get("/api/blood/export", requireConfiguredToken("BLOOD_READ_TOKEN", "export"
     res.json({
       ok: true,
       generatedAt: new Date().toISOString(),
-      readings: await readReadings()
+      readings: await readReadings(),
+      healthMetrics: await readHealthMetrics()
     });
   } catch (error) {
     next(error);
@@ -569,6 +1095,34 @@ app.post("/api/ingest/glucose-readings", requireConfiguredToken("BLOOD_INGEST_TO
       ok: true,
       accepted: readings.length,
       readingIds: readings.map((reading) => reading.readingId)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/ingest/health-metrics", requireConfiguredToken("BLOOD_INGEST_TOKEN", "ingest"), async (req, res, next) => {
+  try {
+    const metrics = sanitizeHealthPayload(req.body);
+    await storeHealthMetrics(metrics);
+    const byType = metrics.reduce((counts, metric) => {
+      counts[metric.type] = (counts[metric.type] || 0) + 1;
+      return counts;
+    }, {});
+    const latest = [...metrics].sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())[0];
+    console.info(JSON.stringify({
+      event: "blood_health_metrics_accepted",
+      accepted: metrics.length,
+      byType,
+      latestMeasuredAt: latest?.measuredAt || null,
+      capturedAt: latest?.capturedAt || null,
+      source: latest?.source || null
+    }));
+    res.json({
+      ok: true,
+      accepted: metrics.length,
+      byType,
+      metricIds: metrics.map((metric) => metric.metricId)
     });
   } catch (error) {
     next(error);
@@ -637,5 +1191,8 @@ module.exports = {
   normalizeGlucoseMgDl,
   parseContourCsv,
   sanitizePayload,
+  sanitizeHealthPayload,
+  summarizeHealthMetrics,
+  estimateAnxietyState,
   summarizeReadings
 };

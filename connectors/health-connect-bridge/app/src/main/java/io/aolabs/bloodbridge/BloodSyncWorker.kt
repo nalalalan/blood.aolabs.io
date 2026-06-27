@@ -17,7 +17,7 @@ class BloodSyncWorker(
 
         return try {
             val result = BloodBridgeSync.sync(applicationContext, days = 7)
-            BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync ${Instant.now()}: ${result.accepted} reading(s).")
+            BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync ${Instant.now()}: ${result.accepted} record(s).")
             Result.success()
         } catch (error: Exception) {
             val message = error.message ?: error.javaClass.simpleName

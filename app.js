@@ -23,6 +23,16 @@ const manualMarkerInput = document.getElementById("manual-marker");
 const manualTokenInput = document.getElementById("manual-token");
 const manualSubmit = document.getElementById("manual-submit");
 const manualStatus = document.getElementById("manual-status");
+const anxietyScore = document.getElementById("anxiety-score");
+const anxietyLabel = document.getElementById("anxiety-label");
+const metricGlucose = document.getElementById("metric-glucose");
+const metricHr = document.getElementById("metric-hr");
+const metricHrv = document.getElementById("metric-hrv");
+const metricSleep = document.getElementById("metric-sleep");
+const metricSteps = document.getElementById("metric-steps");
+const suggestionTime = document.getElementById("suggestion-time");
+const suggestionAction = document.getElementById("suggestion-action");
+const suggestionReason = document.getElementById("suggestion-reason");
 
 const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
@@ -48,6 +58,18 @@ function formatShortDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatHours(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value)) return "";
+  return `${(value / 60).toFixed(1)}h`;
+}
+
+function formatNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return Math.round(number).toLocaleString();
 }
 
 function daysAgo(days) {
@@ -96,7 +118,7 @@ function renderChart(data) {
   if (!points.length) {
     renderBoundary(
       "No readings reached Blood.",
-      "Install or update Blood Bridge, grant Bluetooth, tap Start automatic upload once, and keep the upload notification running."
+      "Install or update Blood Bridge, grant Bluetooth and Health Connect metrics, tap Start automatic upload once, and keep the upload notification running."
     );
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
@@ -214,8 +236,50 @@ function renderTable(data) {
   `).join("");
 }
 
+function setMetricValue(element, value) {
+  if (!element) return;
+  element.textContent = value || "Waiting";
+  element.classList.toggle("is-waiting", !value);
+}
+
+function renderHealth(data) {
+  const health = data?.health || {};
+  const latest = health.latest || {};
+  const anxiety = health.anxiety || {};
+  const glucose = latest.glucose || data?.latest || null;
+  const heartRate = latest.heartRate || null;
+  const hrv = latest.hrv || null;
+  const sleep = latest.sleep || null;
+  const steps = latest.steps || null;
+  const asleepMinutes = sleep?.asleepMinutes ?? sleep?.value;
+  const stepCount = steps?.value;
+
+  if (anxietyScore) anxietyScore.textContent = Number.isFinite(Number(anxiety.score)) ? anxiety.score : "2";
+  if (anxietyLabel) {
+    const label = anxiety.label ? `Estimate: ${anxiety.label}.` : "Waiting for full metrics.";
+    const captured = health.lastCapturedAt ? ` Metrics upload ${formatDateTime(health.lastCapturedAt)}.` : "";
+    anxietyLabel.textContent = `${label}${captured}`;
+  }
+
+  setMetricValue(metricGlucose, glucose?.valueMgDl ? `${glucose.valueMgDl} mg/dL` : "");
+  setMetricValue(metricHr, heartRate?.value ? `${heartRate.value} bpm` : "");
+  setMetricValue(metricHrv, hrv?.value ? `${hrv.value} ms` : "");
+  setMetricValue(metricSleep, asleepMinutes != null && Number.isFinite(Number(asleepMinutes)) ? formatHours(asleepMinutes) : "");
+  setMetricValue(metricSteps, stepCount != null && Number.isFinite(Number(stepCount)) ? `${formatNumber(stepCount)} steps` : "");
+
+  const suggestion = anxiety.suggestion || {};
+  if (suggestionTime) suggestionTime.textContent = suggestion.time || "After upload";
+  if (suggestionAction) {
+    suggestionAction.textContent = suggestion.action || "Blood will choose the next stabilizing action from the current outlier.";
+  }
+  if (suggestionReason) {
+    suggestionReason.textContent = suggestion.reason || anxiety.note || "Personal estimate, not diagnosis.";
+  }
+}
+
 function renderData(data) {
   latestData = data;
+  renderHealth(data);
   if (!data?.latest) {
     latestStrip.classList.add("is-boundary");
     latestValue.textContent = "No data";
@@ -227,7 +291,7 @@ function renderData(data) {
     syncLine.textContent = data?.message || "No readings have reached Blood. Waiting for the automatic CONTOUR meter bridge upload.";
     renderBoundary(
       "No readings reached Blood.",
-      "The phone bridge now runs an always-on CONTOUR NEXT ONE Bluetooth upload service. Manual entry and CSV import are fallback only."
+      "The phone bridge runs always-on CONTOUR glucose plus Health Connect HR, HRV, sleep, and steps. Manual entry and CSV import are fallback only."
     );
     renderTable(data);
     return;

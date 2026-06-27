@@ -30,14 +30,10 @@ class MainActivity : ComponentActivity() {
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        if (granted.contains(BloodBridgeSync.glucosePermission)) {
-            if (granted.contains(BloodBridgeSync.backgroundPermission)) {
-                ensureAutoSync("Blood glucose permission granted. Auto sync scheduled.")
-            } else {
-                setStatus("Blood glucose permission granted. Background sync permission still missing.")
-            }
+        if (BloodBridgeSync.permissions.all { permission -> granted.contains(permission) }) {
+            ensureAutoSync("Health Connect metrics permission granted. Auto sync scheduled.")
         } else {
-            setStatus("Blood glucose permission not granted.")
+            setStatus("Health Connect metrics permission not fully granted.")
         }
     }
     private val requestBluetoothPermissions = registerForActivityResult(
@@ -105,7 +101,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Automatic path: CONTOUR NEXT ONE meter over Bluetooth, then Blood API, then blood.aolabs.io. Start automatic upload once and leave the Blood Bridge notification running."
+            text = "Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, HRV, steps, and sleep, then blood.aolabs.io. Start automatic upload once and leave the Blood Bridge notification running."
             textSize = 15f
             setPadding(0, padding / 2, 0, padding)
         })
@@ -147,7 +143,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "Grant Health Connect backup permission"
+            text = "Grant Health Connect metrics permission"
             setOnClickListener {
                 saveSettings()
                 requestPermissions.launch(permissions)
@@ -160,8 +156,8 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "Sync Health Connect backup"
-            setOnClickListener { syncHealthConnectBackup(days = 90) }
+            text = "Sync Health Connect metrics"
+            setOnClickListener { syncHealthConnectMetrics(days = 90) }
         })
 
         statusText = TextView(this).apply {
@@ -247,13 +243,13 @@ class MainActivity : ComponentActivity() {
         val bluetoothStatus = ContourMeterSync.bluetoothStatus(this)
         val status = HealthConnectClient.getSdkStatus(this)
         when (status) {
-            HealthConnectClient.SDK_AVAILABLE -> setStatus("$bluetoothStatus Health Connect backup available.")
+            HealthConnectClient.SDK_AVAILABLE -> setStatus("$bluetoothStatus Health Connect metrics available.")
             HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
-                setStatus("$bluetoothStatus Health Connect backup update required.")
+                setStatus("$bluetoothStatus Health Connect update required.")
                 val uri = Uri.parse("market://details?id=$healthConnectProviderPackage")
                 startActivity(Intent(Intent.ACTION_VIEW, uri))
             }
-            else -> setStatus("$bluetoothStatus Health Connect backup unavailable on this phone.")
+            else -> setStatus("$bluetoothStatus Health Connect unavailable on this phone.")
         }
     }
 
@@ -273,14 +269,14 @@ class MainActivity : ComponentActivity() {
         }
 
         CoroutineScope(Dispatchers.Main).launch {
-            setStatus("Scanning for CONTOUR NEXT ONE meter.")
+            setStatus("Checking CONTOUR meter and Health Connect metrics.")
             try {
                 val result = withContext(Dispatchers.IO) {
                     BloodBridgeSync.sync(this@MainActivity, days)
                 }
                 ensureAutoSync(
                     if (result.accepted > 0) {
-                        "Automatic sync accepted ${result.accepted} reading(s)."
+                        "Automatic sync accepted ${result.accepted} record(s)."
                     } else {
                         result.response
                     },
@@ -292,7 +288,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun syncHealthConnectBackup(days: Int) {
+    private fun syncHealthConnectMetrics(days: Int) {
         saveSettings()
         val endpoint = endpointInput.text.toString().trim()
         val token = tokenInput.text.toString().trim()
@@ -303,36 +299,37 @@ class MainActivity : ComponentActivity() {
         }
 
         CoroutineScope(Dispatchers.Main).launch {
-            setStatus("Checking Health Connect backup permission.")
+            setStatus("Checking Health Connect metrics permission.")
             val client = HealthConnectClient.getOrCreate(this@MainActivity)
             val granted = client.permissionController.getGrantedPermissions()
-            if (!granted.contains(BloodBridgeSync.glucosePermission)) {
-                setStatus("Health Connect blood glucose permission required.")
+            if (!BloodBridgeSync.permissions.all { permission -> granted.contains(permission) }) {
+                setStatus("Health Connect metrics permission required.")
                 requestPermissions.launch(permissions)
                 return@launch
             }
-            if (!granted.contains(BloodBridgeSync.backgroundPermission)) {
-                requestPermissions.launch(permissions)
-            }
             ensureAutoSync(
-                "Auto sync scheduled. The worker tries the CONTOUR meter first; Health Connect is backup.",
+                "Auto sync scheduled. The worker uploads CONTOUR glucose plus Health Connect metrics.",
                 queueImmediate = false
             )
 
             try {
-                val payload = withContext(Dispatchers.IO) { BloodBridgeSync.readGlucosePayload(client, days) }
-                val accepted = payload.getJSONArray("readings").length()
+                val payload = withContext(Dispatchers.IO) { BloodBridgeSync.readHealthMetricsPayload(client, days) }
+                val accepted = payload.getJSONArray("heartRate").length() +
+                    payload.getJSONArray("hrv").length() +
+                    payload.getJSONArray("steps").length() +
+                    payload.getJSONArray("sleepSessions").length()
                 if (accepted == 0) {
-                    setStatus("No Health Connect glucose records found.")
+                    setStatus("No Health Connect metric records found.")
                     return@launch
                 }
 
-                setStatus("Sending $accepted reading(s).")
-                val response = withContext(Dispatchers.IO) { BloodBridgeSync.postPayload(endpoint, token, payload) }
-                ensureAutoSync("Health Connect backup sync accepted. Auto sync is scheduled.", queueImmediate = false)
+                setStatus("Sending $accepted metric record(s).")
+                val metricsEndpoint = BloodBridgeSync.healthMetricsEndpoint(endpoint)
+                val response = withContext(Dispatchers.IO) { BloodBridgeSync.postPayload(metricsEndpoint, token, payload) }
+                ensureAutoSync("Health Connect metrics sync accepted. Auto sync is scheduled.", queueImmediate = false)
                 setStatus(response)
             } catch (error: Exception) {
-                setStatus("Health Connect backup sync failed: ${error.message ?: error.javaClass.simpleName}")
+                setStatus("Health Connect metrics sync failed: ${error.message ?: error.javaClass.simpleName}")
             }
         }
     }

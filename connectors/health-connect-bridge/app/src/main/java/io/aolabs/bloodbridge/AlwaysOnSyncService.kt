@@ -71,12 +71,12 @@ class AlwaysOnSyncService : Service() {
             return
         }
 
-        updateStatus("Scanning CONTOUR NEXT ONE meter.")
+        updateStatus("Checking CONTOUR meter and Health Connect metrics.")
         try {
             val result = BloodBridgeSync.sync(this, days = 14)
             updateStatus(
                 if (result.accepted > 0) {
-                    "Uploaded ${result.accepted} reading(s) at ${Instant.now()}."
+                    "Uploaded ${result.accepted} record(s) at ${Instant.now()}."
                 } else {
                     "${Instant.now()}: ${result.response}"
                 }

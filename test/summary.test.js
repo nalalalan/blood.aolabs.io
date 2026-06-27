@@ -3,7 +3,9 @@ const assert = require("node:assert/strict");
 const {
   normalizeGlucoseMgDl,
   parseContourCsv,
+  sanitizeHealthPayload,
   sanitizePayload,
+  summarizeHealthMetrics,
   summarizeReadings
 } = require("../server");
 
@@ -41,6 +43,33 @@ test("summary keeps latest reading and ascending trend", () => {
 test("empty summary names the automatic meter bridge boundary", () => {
   const summary = summarizeReadings([]);
   assert.equal(summary.status, "waiting_for_contour_sync");
-  assert.match(summary.message, /automatic CONTOUR NEXT ONE Bluetooth bridge upload/);
-  assert.match(summary.message, /Health Connect is backup only/);
+  assert.match(summary.message, /automatic CONTOUR NEXT ONE Bluetooth glucose upload/);
+  assert.match(summary.message, /Health Connect supplies HR, HRV, sleep, and steps/);
+  assert.equal(summary.health.status, "waiting_for_health_metrics");
+  assert.equal(summary.health.latest.steps.value, null);
+  assert.equal(summary.health.anxiety.score, 2);
+});
+
+test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-27T12:00:00.000Z",
+    heartRate: [{ measuredAt: "2026-06-27T11:58:00.000Z", valueBpm: 102 }],
+    hrv: [{ measuredAt: "2026-06-27T07:30:00.000Z", rmssdMs: 22 }],
+    steps: [{ startTime: "2026-06-27T08:00:00.000Z", endTime: "2026-06-27T12:00:00.000Z", count: 900 }],
+    sleepSessions: [{
+      startTime: "2026-06-27T03:00:00.000Z",
+      endTime: "2026-06-27T08:00:00.000Z",
+      stages: [{ stage: "sleeping", startTime: "2026-06-27T03:15:00.000Z", endTime: "2026-06-27T07:45:00.000Z" }]
+    }]
+  });
+  const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
+
+  assert.equal(metrics.length, 4);
+  assert.equal(health.status, "connected");
+  assert.equal(health.latest.heartRate.value, 102);
+  assert.equal(health.latest.steps.value, 900);
+  assert.equal(health.anxiety.scale, "1-5");
+  assert.ok(health.anxiety.score >= 3);
+  assert.equal(health.anxiety.suggestion.source, "heart_rate");
 });

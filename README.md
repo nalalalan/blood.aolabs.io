@@ -1,16 +1,20 @@
 # blood.aolabs.io
 
-Blood is an AO Labs blood glucose record for readings captured by a CONTOUR NEXT ONE meter.
+Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, HRV, sleep, and steps.
 
-The public page renders a clear glucose graph from the Blood API. Viewing the graph is public so it works from any device; writing readings requires the ingest token.
+The public page renders a clear glucose graph, current health metrics, and a personal anxiety estimate from the Blood API. Viewing the graph is public so it works from any device; writing records requires the ingest token.
 
 ## Data path
 
 Automatic target path:
 
-`CONTOUR NEXT ONE -> Blood Android bridge over Bluetooth -> Blood API -> graph`
+`CONTOUR NEXT ONE -> Blood Android bridge over Bluetooth -> Blood API -> glucose graph`
 
-Backup path:
+Health metrics path:
+
+`Health Connect HR / HRV / sleep / steps -> Blood Android bridge -> Blood API -> health strip + anxiety estimate`
+
+Backup glucose path:
 
 `CONTOUR NEXT ONE -> Contour app -> Health Connect, only if Contour writes blood glucose there -> Blood Android bridge -> Blood API -> graph`
 
@@ -20,8 +24,7 @@ Fallbacks only:
 
 `Manual mg/dL entry -> blood.aolabs.io Write path form -> Blood API -> graph`
 
-The website cannot directly read another phone app's private storage. The bridge can only read Health Connect glucose records that the phone has permissioned and that another app has actually written.
-Because Contour is not appearing as a Health Connect source on the phone, the bridge's primary source is the meter's Bluetooth glucose service, not the Contour app's private app storage.
+The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, HRV, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there.
 
 ## Phone setup
 
@@ -32,18 +35,20 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
    - endpoint: `https://blood.aolabs.io/api/ingest/glucose-readings`
    - token: Railway `BLOOD_INGEST_TOKEN`
 3. Tap `Grant Bluetooth permission`.
-4. Tap `Start automatic upload`.
-5. Leave the `Blood Bridge automatic upload` notification running.
-6. Keep the CONTOUR NEXT ONE near the phone after a reading.
-7. Open `https://blood.aolabs.io/`.
+4. Tap `Grant Health Connect metrics permission`.
+5. Tap `Start automatic upload`.
+6. Leave the `Blood Bridge automatic upload` notification running.
+7. Keep the CONTOUR NEXT ONE near the phone after a reading.
+8. Open `https://blood.aolabs.io/`.
 
 The always-on service scans for the meter and posts stored readings in the background. A 15-minute WorkManager job is also scheduled as a backup. `Run one upload check now` is diagnostic only; it is not the normal workflow.
 
-Health Connect backup:
+Health Connect metrics:
 
 1. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
 2. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
-3. If Health Connect lists a glucose source, tap `Grant Health Connect backup permission` in Blood Bridge.
+3. Confirm the phone has sources for heart rate, HRV, steps, and sleep.
+4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
 
 ## Local
 
@@ -85,6 +90,21 @@ Authorization: `Bearer $BLOOD_INGEST_TOKEN`
 Authorization: `Bearer $BLOOD_INGEST_TOKEN`
 
 Body: CSV text with date/time and glucose columns. The public page posts this from the Contour export form when a bridge token is entered. The parser accepts common Contour-style columns such as `Date`, `Time`, `Reading (mg/dL)`, `Meal Marker`, and `Notes`.
+
+`POST /api/ingest/health-metrics`
+
+Authorization: `Bearer $BLOOD_INGEST_TOKEN`
+
+```json
+{
+  "source": "health-connect",
+  "capturedAt": "2026-06-27T12:00:00.000Z",
+  "heartRate": [{ "measuredAt": "2026-06-27T11:58:00.000Z", "valueBpm": 82 }],
+  "hrv": [{ "measuredAt": "2026-06-27T07:30:00.000Z", "rmssdMs": 41 }],
+  "steps": [{ "startTime": "2026-06-27T08:00:00.000Z", "endTime": "2026-06-27T12:00:00.000Z", "count": 2300 }],
+  "sleepSessions": [{ "startTime": "2026-06-27T03:00:00.000Z", "endTime": "2026-06-27T09:20:00.000Z", "stages": [] }]
+}
+```
 
 `GET /api/blood/summary`
 

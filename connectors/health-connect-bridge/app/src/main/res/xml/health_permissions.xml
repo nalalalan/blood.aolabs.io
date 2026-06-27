@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <permissions-rationale xmlns:android="http://schemas.android.com/apk/res/android">
     <permission android:name="android.permission.health.READ_BLOOD_GLUCOSE" />
+    <permission android:name="android.permission.health.READ_HEART_RATE" />
+    <permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
+    <permission android:name="android.permission.health.READ_STEPS" />
+    <permission android:name="android.permission.health.READ_SLEEP" />
     <permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 </permissions-rationale>

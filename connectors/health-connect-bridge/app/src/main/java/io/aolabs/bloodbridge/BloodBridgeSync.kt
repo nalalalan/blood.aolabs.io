@@ -5,6 +5,10 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.MealType
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.BloodGlucoseRecord
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.work.BackoffPolicy
@@ -29,19 +33,38 @@ data class SyncResult(
 
 object BloodBridgeSync {
     const val DEFAULT_ENDPOINT = "https://blood.aolabs.io/api/ingest/glucose-readings"
+    const val DEFAULT_HEALTH_METRICS_ENDPOINT = "https://blood.aolabs.io/api/ingest/health-metrics"
     const val PREFS_NAME = "blood-bridge"
     const val AUTO_WORK_NAME = "blood-auto-sync"
     const val ALWAYS_ON_ENABLED_KEY = "alwaysOnUploadEnabled"
     const val LAST_AUTO_SYNC_STATUS_KEY = "lastAutoSyncStatus"
 
     val glucosePermission: String = HealthPermission.getReadPermission(BloodGlucoseRecord::class)
+    val heartRatePermission: String = HealthPermission.getReadPermission(HeartRateRecord::class)
+    val hrvPermission: String = HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class)
+    val stepsPermission: String = HealthPermission.getReadPermission(StepsRecord::class)
+    val sleepPermission: String = HealthPermission.getReadPermission(SleepSessionRecord::class)
     val backgroundPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
-    val permissions: Set<String> = setOf(glucosePermission, backgroundPermission)
+    val permissions: Set<String> = setOf(
+        glucosePermission,
+        heartRatePermission,
+        hrvPermission,
+        stepsPermission,
+        sleepPermission,
+        backgroundPermission
+    )
 
     fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun endpoint(context: Context): String =
         prefs(context).getString("endpoint", DEFAULT_ENDPOINT)?.trim().orEmpty().ifBlank { DEFAULT_ENDPOINT }
+
+    fun healthMetricsEndpoint(context: Context): String = healthMetricsEndpoint(endpoint(context))
+
+    fun healthMetricsEndpoint(endpoint: String): String =
+        endpoint.trim()
+            .replace("/api/ingest/glucose-readings", "/api/ingest/health-metrics")
+            .ifBlank { DEFAULT_HEALTH_METRICS_ENDPOINT }
 
     fun token(context: Context): String =
         prefs(context).getString("token", "")?.trim().orEmpty()
@@ -102,37 +125,51 @@ object BloodBridgeSync {
 
     suspend fun sync(context: Context, days: Int): SyncResult {
         val endpoint = endpoint(context)
+        val metricsEndpoint = healthMetricsEndpoint(endpoint)
         val token = token(context)
         if (endpoint.isBlank() || token.isBlank()) {
             throw IllegalStateException("Endpoint and bridge token required.")
         }
 
-        var meterStatus = ContourMeterSync.bluetoothStatus(context)
+        val statuses = mutableListOf<String>()
+        var acceptedTotal = 0
+
         if (ContourMeterSync.hasBluetoothPermission(context)) {
             try {
                 val meterResult = ContourMeterSync.sync(context, endpoint, token)
-                if (meterResult.accepted > 0) return meterResult
-                meterStatus = meterResult.response
+                acceptedTotal += meterResult.accepted
+                statuses.add("CONTOUR meter: ${meterResult.response}")
             } catch (error: Exception) {
-                meterStatus = error.message ?: error.javaClass.simpleName
+                statuses.add("CONTOUR meter: ${error.message ?: error.javaClass.simpleName}")
             }
+        } else {
+            statuses.add("CONTOUR meter: ${ContourMeterSync.bluetoothStatus(context)}")
         }
 
-        return try {
-            val healthResult = syncHealthConnect(context, endpoint, token, days)
-            if (healthResult.accepted > 0) healthResult else SyncResult(
-                0,
-                "No automatic readings reached Blood. Meter path: $meterStatus Health Connect path: ${healthResult.response}"
-            )
+        try {
+            val glucoseResult = syncHealthConnectGlucose(context, endpoint, token, days)
+            acceptedTotal += glucoseResult.accepted
+            statuses.add("Health Connect glucose: ${glucoseResult.response}")
         } catch (error: Exception) {
-            val healthStatus = error.message ?: error.javaClass.simpleName
-            throw IllegalStateException(
-                "No automatic data path is currently producing readings. Meter path: $meterStatus Health Connect path: $healthStatus"
-            )
+            statuses.add("Health Connect glucose: ${error.message ?: error.javaClass.simpleName}")
+        }
+
+        try {
+            val metricsResult = syncHealthMetrics(context, metricsEndpoint, token, days)
+            acceptedTotal += metricsResult.accepted
+            statuses.add("Health metrics: ${metricsResult.response}")
+        } catch (error: Exception) {
+            statuses.add("Health metrics: ${error.message ?: error.javaClass.simpleName}")
+        }
+
+        return if (acceptedTotal > 0) {
+            SyncResult(acceptedTotal, statuses.joinToString(" "))
+        } else {
+            SyncResult(0, "No automatic data reached Blood. ${statuses.joinToString(" ")}")
         }
     }
 
-    private suspend fun syncHealthConnect(
+    private suspend fun syncHealthConnectGlucose(
         context: Context,
         endpoint: String,
         token: String,
@@ -145,16 +182,46 @@ object BloodBridgeSync {
         val client = HealthConnectClient.getOrCreate(context)
         val granted = client.permissionController.getGrantedPermissions()
         if (!granted.contains(glucosePermission)) {
-            throw IllegalStateException("Blood glucose permission required.")
+            throw IllegalStateException("blood glucose permission required.")
         }
         if (!granted.contains(backgroundPermission)) {
-            throw IllegalStateException("Background Health Connect permission required.")
+            throw IllegalStateException("background Health Connect permission required.")
         }
 
         val payload = readGlucosePayload(client, days)
         val accepted = payload.getJSONArray("readings").length()
         if (accepted == 0) {
-            return SyncResult(0, "No Health Connect glucose records found.")
+            return SyncResult(0, "no records found.")
+        }
+
+        return SyncResult(accepted, postPayload(endpoint, token, payload))
+    }
+
+    suspend fun syncHealthMetrics(
+        context: Context,
+        endpoint: String,
+        token: String,
+        days: Int
+    ): SyncResult {
+        if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) {
+            throw IllegalStateException("Health Connect unavailable.")
+        }
+
+        val client = HealthConnectClient.getOrCreate(context)
+        val granted = client.permissionController.getGrantedPermissions()
+        val missing = listOf(heartRatePermission, hrvPermission, stepsPermission, sleepPermission, backgroundPermission)
+            .filter { permission -> !granted.contains(permission) }
+        if (missing.isNotEmpty()) {
+            throw IllegalStateException("metric permission required.")
+        }
+
+        val payload = readHealthMetricsPayload(client, days)
+        val accepted = payload.getJSONArray("heartRate").length() +
+            payload.getJSONArray("hrv").length() +
+            payload.getJSONArray("steps").length() +
+            payload.getJSONArray("sleepSessions").length()
+        if (accepted == 0) {
+            return SyncResult(0, "no records found.")
         }
 
         return SyncResult(accepted, postPayload(endpoint, token, payload))
@@ -181,6 +248,88 @@ object BloodBridgeSync {
             .put("readings", readings)
     }
 
+    suspend fun readHealthMetricsPayload(client: HealthConnectClient, days: Int): JSONObject {
+        val end = Instant.now().plus(1, ChronoUnit.DAYS)
+        val start = Instant.now().minus(days.toLong() + 1, ChronoUnit.DAYS)
+        val range = TimeRangeFilter.between(start, end)
+
+        val heartRate = JSONArray()
+        val heartRateResponse = client.readRecords(
+            ReadRecordsRequest(
+                recordType = HeartRateRecord::class,
+                timeRangeFilter = range
+            )
+        )
+        for (record in heartRateResponse.records) {
+            for (sample in record.samples) {
+                heartRate.put(
+                    JSONObject()
+                        .put("clientRecordId", "${record.metadata.clientRecordId ?: record.metadata.id}:${sample.time}")
+                        .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                        .put("measuredAt", sample.time.toString())
+                        .put("zoneOffset", record.startZoneOffset?.id ?: "")
+                        .put("valueBpm", sample.beatsPerMinute)
+                )
+            }
+        }
+
+        val hrv = JSONArray()
+        val hrvResponse = client.readRecords(
+            ReadRecordsRequest(
+                recordType = HeartRateVariabilityRmssdRecord::class,
+                timeRangeFilter = range
+            )
+        )
+        for (record in hrvResponse.records) {
+            hrv.put(
+                JSONObject()
+                    .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+                    .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                    .put("measuredAt", record.time.toString())
+                    .put("zoneOffset", record.zoneOffset?.id ?: "")
+                    .put("rmssdMs", record.heartRateVariabilityMillis)
+            )
+        }
+
+        val steps = JSONArray()
+        val stepsResponse = client.readRecords(
+            ReadRecordsRequest(
+                recordType = StepsRecord::class,
+                timeRangeFilter = range
+            )
+        )
+        for (record in stepsResponse.records) {
+            steps.put(
+                JSONObject()
+                    .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+                    .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                    .put("startTime", record.startTime.toString())
+                    .put("endTime", record.endTime.toString())
+                    .put("zoneOffset", record.endZoneOffset?.id ?: record.startZoneOffset?.id ?: "")
+                    .put("count", record.count)
+            )
+        }
+
+        val sleepSessions = JSONArray()
+        val sleepResponse = client.readRecords(
+            ReadRecordsRequest(
+                recordType = SleepSessionRecord::class,
+                timeRangeFilter = range
+            )
+        )
+        for (record in sleepResponse.records) {
+            sleepSessions.put(sleepToJson(record))
+        }
+
+        return JSONObject()
+            .put("source", "health-connect")
+            .put("capturedAt", Instant.now().toString())
+            .put("heartRate", heartRate)
+            .put("hrv", hrv)
+            .put("steps", steps)
+            .put("sleepSessions", sleepSessions)
+    }
+
     private fun recordToJson(record: BloodGlucoseRecord): JSONObject {
         return JSONObject()
             .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
@@ -191,6 +340,41 @@ object BloodBridgeSync {
             .put("mealType", mealTypeName(record.mealType))
             .put("relationToMeal", relationToMealName(record.relationToMeal))
             .put("specimenSource", specimenSourceName(record.specimenSource))
+    }
+
+    private fun sleepToJson(record: SleepSessionRecord): JSONObject {
+        val stages = JSONArray()
+        for (stage in record.stages) {
+            stages.put(
+                JSONObject()
+                    .put("stage", sleepStageName(stage.stage))
+                    .put("startTime", stage.startTime.toString())
+                    .put("endTime", stage.endTime.toString())
+            )
+        }
+        return JSONObject()
+            .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+            .put("sourcePackage", record.metadata.dataOrigin.packageName)
+            .put("startTime", record.startTime.toString())
+            .put("endTime", record.endTime.toString())
+            .put("startZoneOffset", record.startZoneOffset?.id ?: "")
+            .put("endZoneOffset", record.endZoneOffset?.id ?: "")
+            .put("title", record.title ?: "")
+            .put("notes", record.notes ?: "")
+            .put("stages", stages)
+    }
+
+    private fun sleepStageName(type: Int): String {
+        return when (type) {
+            SleepSessionRecord.STAGE_TYPE_AWAKE -> "awake"
+            SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED -> "awake_in_bed"
+            SleepSessionRecord.STAGE_TYPE_DEEP -> "deep"
+            SleepSessionRecord.STAGE_TYPE_LIGHT -> "light"
+            SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> "out_of_bed"
+            SleepSessionRecord.STAGE_TYPE_REM -> "rem"
+            SleepSessionRecord.STAGE_TYPE_SLEEPING -> "sleeping"
+            else -> "unknown"
+        }
     }
 
     private fun mealTypeName(type: Int): String {
