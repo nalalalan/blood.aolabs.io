@@ -16,6 +16,7 @@ import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import org.json.JSONArray
@@ -148,6 +149,7 @@ object BloodBridgeSync {
             .build()
         val oneTime = OneTimeWorkRequestBuilder<BloodSyncWorker>()
             .setConstraints(constraints)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         WorkManager.getInstance(context).enqueue(oneTime)
     }

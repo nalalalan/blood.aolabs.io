@@ -2,7 +2,7 @@
 
 Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, HRV, sleep, and steps.
 
-The public page renders a clear glucose graph, current health metrics, and a personal anxiety estimate from the Blood API. Viewing the graph is public so it works from any device; writing records requires the ingest token.
+The public page renders five aligned graphs for glucose, HR, HRV, sleep, and steps, plus a personal anxiety estimate from the Blood API. Viewing the graph is public so it works from any device; writing records requires the ingest token.
 
 ## Data path
 
@@ -12,7 +12,7 @@ Automatic target path:
 
 Health metrics path:
 
-`Health Connect HR / HRV / sleep / steps -> Blood Android bridge -> Blood API -> health strip + anxiety estimate`
+`Health Connect HR / HRV / sleep / steps -> Blood Android bridge -> Blood API -> aligned health graphs + anxiety estimate`
 
 Backup glucose path:
 
@@ -35,11 +35,11 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
 3. Tap `Grant Bluetooth permission`.
 4. Tap `Grant Health Connect metrics permission`.
 5. Tap `Start automatic upload`.
-6. Leave the `Blood Bridge automatic upload` notification running.
+6. Keep Android background sync allowed for Blood Bridge.
 7. Keep the CONTOUR NEXT ONE near the phone after a reading.
 8. Open `https://blood.aolabs.io/`.
 
-The always-on service scans for the meter and posts stored readings in the background. A 15-minute WorkManager job is also scheduled as a backup. `Run one upload check now` is diagnostic only; it is not the normal workflow.
+Blood Bridge uses Android WorkManager background sync and queues an immediate background upload when automatic upload is started. It does not use a persistent foreground notification. Android may still delay invisible background work; when that happens, Blood shows the last upload time until the next worker run posts the stored meter and Health Connect records. `Run one upload check now` is diagnostic only; it is not the normal workflow.
 
 Health Connect metrics:
 
@@ -47,6 +47,8 @@ Health Connect metrics:
 2. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
 3. Confirm the phone has sources for heart rate, HRV, steps, and sleep.
 4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
+
+HRV is source-backed only. Blood reads Health Connect RMSSD HRV records when the phone or wearable provides them; it does not fabricate HRV from ordinary heart-rate samples.
 
 ## Local
 

@@ -801,6 +801,86 @@ function metricAverage(metrics, type, days = 14) {
   return values.length ? average(values) : null;
 }
 
+function metricTrend(metrics, type, limit = 900) {
+  return metrics
+    .filter((metric) => metric.type === type)
+    .filter((metric) => metric.measuredAt && Number.isFinite(Number(metric.value)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+    .slice(-limit)
+    .map((metric) => ({
+      metricId: metric.metricId,
+      type: metric.type,
+      source: metric.source,
+      sourcePackage: metric.sourcePackage,
+      measuredAt: metric.measuredAt,
+      date: metric.date,
+      value: Number(metric.value),
+      unit: metric.unit,
+      capturedAt: metric.capturedAt
+    }));
+}
+
+function sleepTrend(metrics, fallback = null, limit = 90) {
+  const byDate = new Map();
+  for (const metric of metrics.filter((item) => item.type === "sleep")) {
+    if (!metric?.date || !metric?.measuredAt) continue;
+    const existing = byDate.get(metric.date);
+    if (existing && new Date(existing.measuredAt).getTime() >= new Date(metric.measuredAt).getTime()) continue;
+    byDate.set(metric.date, metric);
+  }
+  if (fallback?.date && fallback?.measuredAt && !byDate.has(fallback.date)) {
+    byDate.set(fallback.date, fallback);
+  }
+  return Array.from(byDate.values())
+    .filter((metric) => Number.isFinite(Number(metric.value ?? metric.asleepMinutes)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+    .slice(-limit)
+    .map((metric) => ({
+      metricId: metric.metricId,
+      type: "sleep",
+      source: metric.source,
+      sourcePackage: metric.sourcePackage,
+      measuredAt: metric.measuredAt,
+      date: metric.date,
+      value: Number(metric.value ?? metric.asleepMinutes),
+      unit: "minutes_asleep",
+      capturedAt: metric.capturedAt
+    }));
+}
+
+function stepsTrend(metrics, limit = 90) {
+  const byDate = new Map();
+  for (const metric of metrics.filter((item) => item.type === "steps")) {
+    if (!metric?.date || !metric?.measuredAt) continue;
+    const value = Number(metric.value);
+    if (!Number.isFinite(value)) continue;
+    const existing = byDate.get(metric.date) || {
+      type: "steps",
+      source: metric.source,
+      sourcePackage: metric.sourcePackage,
+      date: metric.date,
+      measuredAt: metric.measuredAt,
+      capturedAt: metric.capturedAt,
+      value: 0
+    };
+    existing.value += value;
+    if (new Date(metric.measuredAt).getTime() > new Date(existing.measuredAt).getTime()) {
+      existing.measuredAt = metric.measuredAt;
+      existing.capturedAt = metric.capturedAt;
+      existing.sourcePackage = metric.sourcePackage;
+    }
+    byDate.set(metric.date, existing);
+  }
+  return Array.from(byDate.values())
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+    .slice(-limit)
+    .map((metric) => ({
+      ...metric,
+      value: Math.round(metric.value),
+      unit: "steps"
+    }));
+}
+
 function easternHour(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -961,6 +1041,12 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     metricCount: normalized.length,
     lastCapturedAt,
     latest,
+    trends: {
+      heartRate: metricTrend(normalized, "heart_rate"),
+      hrv: metricTrend(normalized, "hrv"),
+      sleep: sleepTrend(normalized, sleep),
+      steps: stepsTrend(normalized)
+    },
     baselines: {
       heartRateAvg14d: metricAverage(normalized, "heart_rate", 14),
       hrvAvg14d: metricAverage(normalized, "hrv", 14),

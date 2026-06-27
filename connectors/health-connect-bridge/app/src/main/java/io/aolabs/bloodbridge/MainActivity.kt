@@ -1,10 +1,7 @@
 package io.aolabs.bloodbridge
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -27,7 +24,6 @@ class MainActivity : ComponentActivity() {
     private val permissions = BloodBridgeSync.permissions
     private var syncAfterBluetoothPermission = false
     private var startAlwaysOnAfterBluetoothPermission = false
-    private var startAlwaysOnAfterNotificationPermission = false
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
@@ -56,15 +52,6 @@ class MainActivity : ComponentActivity() {
             setStatus("Bluetooth permission not granted. The CONTOUR meter cannot sync automatically.")
         }
     }
-    private val requestNotificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) {
-        if (startAlwaysOnAfterNotificationPermission) {
-            startAlwaysOnAfterNotificationPermission = false
-            startAlwaysOnUpload(skipNotificationPrompt = true)
-        }
-    }
-
     private lateinit var endpointInput: EditText
     private lateinit var tokenInput: EditText
     private lateinit var statusText: TextView
@@ -82,13 +69,9 @@ class MainActivity : ComponentActivity() {
             val lastStatus = BloodBridgeSync.prefs(this)
                 .getString(BloodBridgeSync.LAST_AUTO_SYNC_STATUS_KEY, "")
                 .orEmpty()
-            if (BloodBridgeSync.isAlwaysOnEnabled(this) && ContourMeterSync.hasBluetoothPermission(this)) {
-                startAlwaysOnUpload(skipNotificationPrompt = true)
-            } else {
-                setStatus(lastStatus.ifBlank {
-                    "Periodic upload is scheduled. Tap Start automatic upload to keep the meter bridge running continuously."
-                })
-            }
+            setStatus(lastStatus.ifBlank {
+                "Invisible automatic upload is scheduled. Android runs it in the background."
+            })
         } else {
             setStatus("This APK cannot upload. Download Blood Bridge again from blood.aolabs.io.")
         }
@@ -245,7 +228,7 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun startAlwaysOnUpload(skipNotificationPrompt: Boolean = false) {
+    private fun startAlwaysOnUpload() {
         saveSettings()
         val endpoint = BloodBridgeSync.endpoint(this)
         val token = BloodBridgeSync.token(this)
@@ -260,29 +243,15 @@ class MainActivity : ComponentActivity() {
             requestBluetoothPermission(queueSync = false)
             return
         }
-        if (!skipNotificationPrompt && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            startAlwaysOnAfterNotificationPermission = true
-            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return
-        }
-
         BloodBridgeSync.setAlwaysOnEnabled(this, true)
         BloodBridgeSync.scheduleAutoSync(this)
         BloodBridgeSync.queueImmediateSync(this)
-        try {
-            AlwaysOnSyncService.start(this)
-            setStatus("Automatic upload is running. Keep the Blood Bridge notification active; new meter readings will be checked and posted in the background.")
-        } catch (error: Exception) {
-            setStatus("Automatic upload could not start. ${BloodBridgeSync.userFacingError(error)}")
-        }
+        setStatus("Invisible automatic upload is scheduled. Android runs it in the background.")
     }
 
     private fun stopAlwaysOnUpload() {
         BloodBridgeSync.setAlwaysOnEnabled(this, false)
         BloodBridgeSync.cancelAutoSync(this)
-        AlwaysOnSyncService.stop(this)
         setStatus("Automatic upload stopped.")
     }
 

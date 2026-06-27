@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg?v=20260627-suite-drop">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260627-health-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260627-invisible-graphs-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -123,11 +123,11 @@
       </div>
 
       <div class="chart-frame">
-        <div id="chart" class="chart" role="img" aria-label="blood glucose graph"></div>
+        <div id="charts" class="charts" role="img" aria-label="glucose, heart rate, HRV, sleep, and steps graphs"></div>
       </div>
       <div class="chart-note">
-        <span>mg/dL</span>
-        <span>Reference band is shown only as a plotting aid.</span>
+        <span>All graphs use the same time axis.</span>
+        <span>HRV shows true Health Connect RMSSD only.</span>
       </div>
     </section>
 
@@ -165,8 +165,8 @@
         <span>Grant Bluetooth permission</span>
         <span>Grant Health Connect metrics</span>
         <span>Tap Start automatic upload once</span>
-        <span>Keep the upload notification running</span>
-        <span>Open Blood and see the combined graph</span>
+        <span>Leave Android background sync allowed</span>
+        <span>Open Blood and see five aligned graphs</span>
       </div>
     </section>
 
@@ -221,6 +221,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=20260627-bridge-v2" defer></script>
+  <script src="./app.js?v=20260627-invisible-graphs-v1" defer></script>
 </body>
 </html>

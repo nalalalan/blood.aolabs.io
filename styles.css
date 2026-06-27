@@ -461,18 +461,49 @@ h2 {
 }
 
 .chart-frame {
-  min-height: 430px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffaf2;
 }
 
-.chart {
-  min-height: 430px;
+.charts {
+  display: grid;
 }
 
-.glucose-chart {
+.chart-panel {
+  border-bottom: 1px solid rgba(73, 55, 51, .1);
+  background: #fffaf2;
+}
+
+.chart-panel:last-child {
+  border-bottom: 0;
+}
+
+.chart-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 0;
+}
+
+.chart-panel-head strong {
+  font-size: 14px;
+  line-height: 1.05;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.chart-panel-head span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 760;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-chart {
   display: block;
   width: 100%;
   height: auto;
@@ -520,10 +551,52 @@ h2 {
   stroke-linejoin: round;
 }
 
+.trend-line.heart-rate,
+.point.heart-rate {
+  stroke: var(--teal);
+}
+
+.trend-line.hrv,
+.point.hrv {
+  stroke: #6f5aa8;
+}
+
+.trend-line.sleep,
+.point.sleep {
+  stroke: var(--amber);
+}
+
+.trend-line.steps,
+.point.steps {
+  stroke: #4f6f3f;
+}
+
+.trend-area.heart-rate {
+  fill: rgba(73, 123, 120, .08);
+}
+
+.trend-area.hrv {
+  fill: rgba(111, 90, 168, .08);
+}
+
+.trend-area.sleep {
+  fill: rgba(181, 123, 66, .08);
+}
+
+.trend-area.steps {
+  fill: rgba(79, 111, 63, .08);
+}
+
 .point {
   fill: #fffaf2;
   stroke: var(--blood-dark);
   stroke-width: 2;
+}
+
+.empty-series {
+  fill: rgba(34, 30, 29, .5);
+  font-size: 13px;
+  font-weight: 720;
 }
 
 .latest-marker circle {
@@ -805,17 +878,20 @@ tbody tr:last-child td {
     grid-column: 1;
   }
 
-  .chart-frame,
-  .chart {
-    min-height: 0;
-  }
-
   .chart-frame {
     overflow: hidden;
   }
 
-  .glucose-chart {
+  .metric-chart {
     min-width: 0;
+  }
+
+  .chart-panel-head {
+    padding: 9px 10px 0;
+  }
+
+  .chart-panel-head span {
+    font-size: 12px;
   }
 
   .chart-note {

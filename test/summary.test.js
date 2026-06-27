@@ -69,7 +69,26 @@ test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
   assert.equal(health.status, "connected");
   assert.equal(health.latest.heartRate.value, 102);
   assert.equal(health.latest.steps.value, 900);
+  assert.equal(health.trends.heartRate.length, 1);
+  assert.equal(health.trends.hrv.length, 1);
+  assert.equal(health.trends.sleep[0].value, 300);
+  assert.equal(health.trends.steps[0].value, 900);
   assert.equal(health.anxiety.scale, "1-5");
   assert.ok(health.anxiety.score >= 3);
   assert.equal(health.anxiety.suggestion.source, "heart_rate");
+});
+
+test("does not derive HRV from ordinary heart-rate samples", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-27T12:00:00.000Z",
+    heartRate: [
+      { measuredAt: "2026-06-27T11:58:00.000Z", valueBpm: 70 },
+      { measuredAt: "2026-06-27T11:59:00.000Z", valueBpm: 76 }
+    ]
+  });
+  const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
+
+  assert.equal(health.latest.hrv, null);
+  assert.deepEqual(health.trends.hrv, []);
 });

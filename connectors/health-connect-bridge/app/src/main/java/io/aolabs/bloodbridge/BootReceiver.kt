@@ -11,16 +11,12 @@ class BootReceiver : BroadcastReceiver() {
 
         if (BloodBridgeSync.token(context).isBlank()) return
         BloodBridgeSync.scheduleAutoSync(context)
-
         if (BloodBridgeSync.isAlwaysOnEnabled(context) && ContourMeterSync.hasBluetoothPermission(context)) {
-            try {
-                AlwaysOnSyncService.start(context)
-            } catch (error: Exception) {
-                BloodBridgeSync.saveAutoSyncStatus(
-                    context,
-                    "Automatic upload will resume after opening Blood Bridge. ${BloodBridgeSync.userFacingError(error)}"
-                )
-            }
+            BloodBridgeSync.queueImmediateSync(context)
+            BloodBridgeSync.saveAutoSyncStatus(
+                context,
+                "Invisible automatic upload resumed after boot."
+            )
         }
     }
 }

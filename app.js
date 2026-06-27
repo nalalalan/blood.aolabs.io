@@ -6,7 +6,7 @@ const latestTime = document.getElementById("latest-time");
 const latestSource = document.getElementById("latest-source");
 const rangeSummary = document.getElementById("range-summary");
 const rangeDetail = document.getElementById("range-detail");
-const chart = document.getElementById("chart");
+const charts = document.getElementById("charts");
 const latestStrip = document.querySelector(".latest-strip");
 const readingsBody = document.getElementById("readings-body");
 const recordCount = document.getElementById("record-count");
@@ -105,7 +105,7 @@ function filteredTrend(data) {
 }
 
 function renderBoundary(message, detail = "") {
-  chart.innerHTML = `
+  charts.innerHTML = `
     <div class="chart-boundary" role="status">
       <strong>${message}</strong>
       <p>${detail}</p>
@@ -113,110 +113,242 @@ function renderBoundary(message, detail = "") {
   `;
 }
 
-function renderChart(data) {
-  const points = filteredTrend(data);
-  if (!points.length) {
+function buildSeries(data) {
+  const healthTrends = data?.health?.trends || {};
+  const latest = data?.health?.latest || {};
+  const withLatest = (points, latestMetric, valueMapper = (metric) => metric?.value) => {
+    if (points.length || !latestMetric?.measuredAt) return points;
+    const value = valueMapper(latestMetric);
+    if (!Number.isFinite(Number(value))) return points;
+    return [{
+      measuredAt: latestMetric.measuredAt,
+      value: Number(value),
+      title: `${formatDateTime(latestMetric.measuredAt)}: ${formatNumber(value)}`
+    }];
+  };
+  return [
+    {
+      key: "glucose",
+      title: "Glucose",
+      unit: "mg/dL",
+      empty: "Waiting for CONTOUR meter upload.",
+      reference: [70, 180],
+      yFloor: 60,
+      yCeil: 200,
+      ticks: [60, 100, 140, 180, 220],
+      points: [...(data?.trend || [])].map((reading) => ({
+        measuredAt: reading.measuredAt,
+        value: reading.valueMgDl,
+        title: `${formatDateTime(reading.measuredAt)}: ${reading.valueMgDl} mg/dL`
+      }))
+    },
+    {
+      key: "heart-rate",
+      title: "HR",
+      unit: "bpm",
+      empty: "Waiting for Health Connect heart rate.",
+      yFloor: 45,
+      yCeil: 120,
+      ticks: [50, 70, 90, 110, 130],
+      points: withLatest([...(healthTrends.heartRate || [])].map((metric) => ({
+        measuredAt: metric.measuredAt,
+        value: metric.value,
+        title: `${formatDateTime(metric.measuredAt)}: ${metric.value} bpm`
+      })), latest.heartRate)
+    },
+    {
+      key: "hrv",
+      title: "HRV",
+      unit: "ms",
+      empty: "Waiting for a true Health Connect HRV/RMSSD record.",
+      yFloor: 0,
+      yCeil: 100,
+      ticks: [0, 25, 50, 75, 100],
+      points: withLatest([...(healthTrends.hrv || [])].map((metric) => ({
+        measuredAt: metric.measuredAt,
+        value: metric.value,
+        title: `${formatDateTime(metric.measuredAt)}: ${metric.value} ms`
+      })), latest.hrv)
+    },
+    {
+      key: "sleep",
+      title: "Sleep",
+      unit: "h",
+      empty: "Waiting for Health Connect sleep.",
+      yFloor: 0,
+      yCeil: 10,
+      ticks: [0, 2, 4, 6, 8, 10],
+      points: withLatest([...(healthTrends.sleep || [])].map((metric) => {
+        const value = Number(metric.value) / 60;
+        return {
+          measuredAt: metric.measuredAt,
+          value,
+          title: `${formatDateTime(metric.measuredAt)}: ${value.toFixed(1)}h asleep`
+        };
+      }), latest.sleep, (metric) => Number(metric.asleepMinutes ?? metric.value) / 60)
+    },
+    {
+      key: "steps",
+      title: "Steps",
+      unit: "steps",
+      empty: "Waiting for Health Connect steps.",
+      yFloor: 0,
+      yCeil: 20000,
+      ticks: [0, 5000, 10000, 15000, 20000],
+      points: withLatest([...(healthTrends.steps || [])].map((metric) => ({
+        measuredAt: metric.measuredAt,
+        value: metric.value,
+        title: `${formatDateTime(metric.measuredAt)}: ${formatNumber(metric.value)} steps`
+      })), latest.steps)
+    }
+  ].map((series) => ({
+    ...series,
+    points: series.points
+      .filter((point) => point.measuredAt && Number.isFinite(Number(point.value)))
+      .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+  }));
+}
+
+function filterSeriesPoints(points) {
+  if (activeRange === "all") return points;
+  const days = Number.parseInt(activeRange, 10);
+  const cutoff = days === 1 ? Date.now() - 24 * 60 * 60 * 1000 : daysAgo(days);
+  return points.filter((point) => new Date(point.measuredAt).getTime() >= cutoff);
+}
+
+function formatAxisValue(value, unit) {
+  if (unit === "steps") return formatNumber(value);
+  if (unit === "h") return Number(value).toFixed(Number(value) % 1 === 0 ? 0 : 1);
+  return Math.round(value);
+}
+
+function renderAllCharts(data) {
+  const seriesList = buildSeries(data).map((series) => ({
+    ...series,
+    visiblePoints: filterSeriesPoints(series.points)
+  }));
+  const allPoints = seriesList.flatMap((series) => series.visiblePoints);
+  if (!allPoints.length) {
     renderBoundary(
-      "No readings reached Blood.",
-      "Install or update Blood Bridge, grant Bluetooth and Health Connect metrics, tap Start automatic upload once, and keep the upload notification running."
+      "No graph data reached Blood.",
+      "Install or update Blood Bridge, grant Bluetooth and Health Connect metrics, then tap Start automatic upload once."
     );
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
     return;
   }
 
+  const glucosePoints = seriesList.find((series) => series.key === "glucose")?.visiblePoints || [];
+  if (glucosePoints.length) {
+    const values = glucosePoints.map((point) => point.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+    rangeSummary.textContent = `${min}-${max}`;
+    rangeDetail.textContent = `${glucosePoints.length} readings, ${avg} mg/dL avg.`;
+  } else {
+    rangeSummary.textContent = "No glucose";
+    rangeDetail.textContent = "Health metrics only.";
+  }
+
   const narrow = window.innerWidth <= 760;
-  const width = narrow ? 560 : 920;
-  const height = narrow ? 420 : 430;
+  const width = narrow ? 620 : 980;
+  const height = narrow ? 176 : 188;
   const pad = narrow
-    ? { top: 34, right: 70, bottom: 50, left: 46 }
-    : { top: 30, right: 54, bottom: 54, left: 56 };
+    ? { top: 34, right: 70, bottom: 42, left: 54 }
+    : { top: 34, right: 82, bottom: 44, left: 62 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
-  const times = points.map((reading) => new Date(reading.measuredAt).getTime());
-  const values = points.map((reading) => reading.valueMgDl);
+  const times = allPoints.map((point) => new Date(point.measuredAt).getTime());
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
-  const minValue = Math.min(60, ...values) - 10;
-  const maxValue = Math.max(200, ...values) + 10;
-  const domain = Math.max(1, maxTime - minTime);
-  const valueDomain = Math.max(1, maxValue - minValue);
-  const xFor = (time) => pad.left + ((time - minTime) / domain) * plotWidth;
-  const yFor = (value) => pad.top + plotHeight - ((value - minValue) / valueDomain) * plotHeight;
-  const line = points
-    .map((reading, index) => {
-      const command = index === 0 ? "M" : "L";
-      return `${command} ${xFor(new Date(reading.measuredAt).getTime()).toFixed(1)} ${yFor(reading.valueMgDl).toFixed(1)}`;
-    })
-    .join(" ");
-  const area = `${line} L ${xFor(maxTime).toFixed(1)} ${yFor(minValue).toFixed(1)} L ${xFor(minTime).toFixed(1)} ${yFor(minValue).toFixed(1)} Z`;
-  const ticks = [60, 100, 140, 180, 220]
-    .filter((value) => value >= minValue && value <= maxValue)
-    .map((value) => {
-      const y = yFor(value);
-      return `
-        <g class="gridline">
-          <line x1="${pad.left}" x2="${pad.left + plotWidth}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>
-          <text x="${pad.left - 12}" y="${(y + 4).toFixed(1)}">${value}</text>
-        </g>
-      `;
-    })
-    .join("");
-  const xTicks = [points[0], points[Math.floor(points.length / 2)], points[points.length - 1]]
-    .filter(Boolean)
-    .filter((reading, index, arr) => arr.findIndex((item) => item.measuredAt === reading.measuredAt) === index)
-    .map((reading) => {
-      const x = xFor(new Date(reading.measuredAt).getTime());
-      return `
-        <g class="x-tick">
-          <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${pad.top + plotHeight}" y2="${pad.top + plotHeight + 7}"></line>
-          <text x="${x.toFixed(1)}" y="${height - 18}">${formatShortDate(reading.measuredAt)}</text>
-        </g>
-      `;
-    })
-    .join("");
-  const circles = points
-    .map((reading) => {
-      const x = xFor(new Date(reading.measuredAt).getTime());
-      const y = yFor(reading.valueMgDl);
-      return `
-        <circle class="point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.8">
-          <title>${formatDateTime(reading.measuredAt)}: ${reading.valueMgDl} mg/dL</title>
-        </circle>
-      `;
-    })
-    .join("");
-  const latest = points[points.length - 1];
-  const latestX = xFor(new Date(latest.measuredAt).getTime());
-  const latestY = yFor(latest.valueMgDl);
-  const latestLabelOnLeft = latestX > width - (narrow ? 120 : 132);
-  const latestLabelX = latestLabelOnLeft ? latestX - 14 : latestX + 13;
-  const latestLabelAnchor = latestLabelOnLeft ? "end" : "start";
-  const bandTop = Math.min(yFor(180), yFor(70));
-  const bandBottom = Math.max(yFor(180), yFor(70));
+  const timeDomain = Math.max(1, maxTime - minTime);
+  const xFor = (time) => pad.left + ((time - minTime) / timeDomain) * plotWidth;
+  const xTickTimes = [minTime, minTime + timeDomain / 2, maxTime]
+    .filter((time, index, list) => list.findIndex((item) => Math.round(item) === Math.round(time)) === index);
 
-  chart.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="glucose-chart" aria-hidden="true">
-      <rect class="plot-bg" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}"></rect>
-      <rect class="reference-band" x="${pad.left}" y="${bandTop.toFixed(1)}" width="${plotWidth}" height="${(bandBottom - bandTop).toFixed(1)}"></rect>
-      ${ticks}
-      ${xTicks}
-      <path class="trend-area" d="${area}"></path>
-      <path class="trend-line" d="${line}"></path>
-      ${circles}
-      <g class="latest-marker">
-        <circle cx="${latestX.toFixed(1)}" cy="${latestY.toFixed(1)}" r="8"></circle>
-        <text x="${latestLabelX.toFixed(1)}" y="${(latestY - 10).toFixed(1)}" text-anchor="${latestLabelAnchor}">${latest.valueMgDl}</text>
-      </g>
-      <text class="axis-label" x="${pad.left}" y="18">blood glucose</text>
-    </svg>
-  `;
+  charts.innerHTML = seriesList.map((series) => {
+    const points = series.visiblePoints;
+    const values = points.map((point) => Number(point.value));
+    const minValue = Math.min(series.yFloor, ...values) - (series.key === "steps" ? 0 : series.key === "sleep" ? 0 : 5);
+    const maxValue = Math.max(series.yCeil, ...values) + (series.key === "steps" ? 0 : series.key === "sleep" ? 0 : 5);
+    const valueDomain = Math.max(1, maxValue - minValue);
+    const yFor = (value) => pad.top + plotHeight - ((value - minValue) / valueDomain) * plotHeight;
+    const line = points
+      .map((point, index) => {
+        const command = index === 0 ? "M" : "L";
+        return `${command} ${xFor(new Date(point.measuredAt).getTime()).toFixed(1)} ${yFor(point.value).toFixed(1)}`;
+      })
+      .join(" ");
+    const area = points.length > 1
+      ? `${line} L ${xFor(new Date(points[points.length - 1].measuredAt).getTime()).toFixed(1)} ${yFor(minValue).toFixed(1)} L ${xFor(new Date(points[0].measuredAt).getTime()).toFixed(1)} ${yFor(minValue).toFixed(1)} Z`
+      : "";
+    const ticks = series.ticks
+      .filter((value) => value >= minValue && value <= maxValue)
+      .map((value) => {
+        const y = yFor(value);
+        return `
+          <g class="gridline">
+            <line x1="${pad.left}" x2="${pad.left + plotWidth}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>
+            <text x="${pad.left - 10}" y="${(y + 4).toFixed(1)}">${formatAxisValue(value, series.unit)}</text>
+          </g>
+        `;
+      })
+      .join("");
+    const xTicks = xTickTimes
+      .map((time) => {
+        const x = xFor(time);
+        return `
+          <g class="x-tick">
+            <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${pad.top + plotHeight}" y2="${pad.top + plotHeight + 6}"></line>
+            <text x="${x.toFixed(1)}" y="${height - 16}">${formatShortDate(time)}</text>
+          </g>
+        `;
+      })
+      .join("");
+    const circles = points
+      .map((point) => {
+        const x = xFor(new Date(point.measuredAt).getTime());
+        const y = yFor(point.value);
+        return `
+          <circle class="point ${series.key}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${points.length > 90 ? 2.4 : 3.8}">
+            <title>${point.title}</title>
+          </circle>
+        `;
+      })
+      .join("");
+    const latest = points[points.length - 1];
+    const latestLabel = latest
+      ? `${formatAxisValue(latest.value, series.unit)} ${series.unit}`
+      : series.empty;
+    const band = series.reference
+      ? `<rect class="reference-band" x="${pad.left}" y="${Math.min(yFor(series.reference[0]), yFor(series.reference[1])).toFixed(1)}" width="${plotWidth}" height="${Math.abs(yFor(series.reference[0]) - yFor(series.reference[1])).toFixed(1)}"></rect>`
+      : "";
+    const pathMarkup = points.length
+      ? `
+        ${area ? `<path class="trend-area ${series.key}" d="${area}"></path>` : ""}
+        ${points.length > 1 ? `<path class="trend-line ${series.key}" d="${line}"></path>` : ""}
+        ${circles}
+      `
+      : `<text class="empty-series" x="${pad.left}" y="${pad.top + plotHeight / 2}">${series.empty}</text>`;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const avg = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-  rangeSummary.textContent = `${min}-${max}`;
-  rangeDetail.textContent = `${points.length} readings, ${avg} mg/dL avg.`;
+    return `
+      <section class="chart-panel" aria-label="${series.title} graph">
+        <div class="chart-panel-head">
+          <strong>${series.title}</strong>
+          <span>${latestLabel}</span>
+        </div>
+        <svg viewBox="0 0 ${width} ${height}" class="metric-chart" aria-hidden="true">
+          <rect class="plot-bg" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}"></rect>
+          ${band}
+          ${ticks}
+          ${xTicks}
+          ${pathMarkup}
+          <text class="axis-label" x="${pad.left}" y="20">${series.unit}</text>
+        </svg>
+      </section>
+    `;
+  }).join("");
 }
 
 function renderTable(data) {
@@ -289,10 +421,7 @@ function renderData(data) {
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
     syncLine.textContent = data?.message || "No readings have reached Blood. Waiting for the automatic CONTOUR meter bridge upload.";
-    renderBoundary(
-      "No readings reached Blood.",
-      "The phone bridge runs always-on CONTOUR glucose plus Health Connect HR, HRV, sleep, and steps. Manual entry and CSV import are fallback only."
-    );
+    renderAllCharts(data);
     renderTable(data);
     return;
   }
@@ -306,7 +435,7 @@ function renderData(data) {
   syncLine.textContent = data.lastCapturedAt
     ? `Last upload ${formatDateTime(data.lastCapturedAt)}.`
     : "Readings are present; no bridge upload time was stored.";
-  renderChart(data);
+  renderAllCharts(data);
   renderTable(data);
 }
 
@@ -328,7 +457,7 @@ async function loadSummary(manual = false) {
     }
   } catch (error) {
     syncLine.textContent = "Blood API unavailable.";
-    renderBoundary("API unavailable.", error.message || "The graph could not load.");
+    renderBoundary("API unavailable.", error.message || "The graphs could not load.");
     if (manual) setRefreshState("Failed", false);
   }
 }
@@ -337,7 +466,7 @@ rangeButtons.forEach((button) => {
   button.addEventListener("click", () => {
     activeRange = button.dataset.range;
     rangeButtons.forEach((item) => item.classList.toggle("is-active", item === button));
-    if (latestData) renderChart(latestData);
+    if (latestData) renderAllCharts(latestData);
   });
 });
 
