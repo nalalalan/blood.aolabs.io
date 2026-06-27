@@ -31,6 +31,8 @@ object BloodBridgeSync {
     const val DEFAULT_ENDPOINT = "https://blood.aolabs.io/api/ingest/glucose-readings"
     const val PREFS_NAME = "blood-bridge"
     const val AUTO_WORK_NAME = "blood-auto-sync"
+    const val ALWAYS_ON_ENABLED_KEY = "alwaysOnUploadEnabled"
+    const val LAST_AUTO_SYNC_STATUS_KEY = "lastAutoSyncStatus"
 
     val glucosePermission: String = HealthPermission.getReadPermission(BloodGlucoseRecord::class)
     val backgroundPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
@@ -52,6 +54,23 @@ object BloodBridgeSync {
             .apply()
     }
 
+    fun isAlwaysOnEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(ALWAYS_ON_ENABLED_KEY, false)
+
+    fun setAlwaysOnEnabled(context: Context, enabled: Boolean) {
+        prefs(context)
+            .edit()
+            .putBoolean(ALWAYS_ON_ENABLED_KEY, enabled)
+            .apply()
+    }
+
+    fun saveAutoSyncStatus(context: Context, message: String) {
+        prefs(context)
+            .edit()
+            .putString(LAST_AUTO_SYNC_STATUS_KEY, message)
+            .apply()
+    }
+
     fun scheduleAutoSync(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -65,6 +84,10 @@ object BloodBridgeSync {
             ExistingPeriodicWorkPolicy.UPDATE,
             periodic
         )
+    }
+
+    fun cancelAutoSync(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(AUTO_WORK_NAME)
     }
 
     fun queueImmediateSync(context: Context) {

@@ -95,7 +95,7 @@ function renderChart(data) {
   if (!points.length) {
     renderBoundary(
       "No readings reached Blood.",
-      "Install or update Blood Bridge, grant Bluetooth, and keep the CONTOUR NEXT ONE near the phone after a reading. Health Connect is backup only."
+      "Install or update Blood Bridge, grant Bluetooth, tap Start automatic upload once, and keep the upload notification running."
     );
     rangeSummary.textContent = "No data";
     rangeDetail.textContent = "Selected range.";
@@ -226,7 +226,7 @@ function renderData(data) {
     syncLine.textContent = data?.message || "No readings have reached Blood. Waiting for the automatic CONTOUR meter bridge upload.";
     renderBoundary(
       "No readings reached Blood.",
-      "The phone bridge now targets the CONTOUR NEXT ONE meter over Bluetooth. Manual entry and CSV import are fallback only."
+      "The phone bridge now runs an always-on CONTOUR NEXT ONE Bluetooth upload service. Manual entry and CSV import are fallback only."
     );
     renderTable(data);
     return;

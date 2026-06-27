@@ -14,7 +14,7 @@ Backup path:
 
 `CONTOUR NEXT ONE -> Contour app -> Health Connect, only if Contour writes blood glucose there -> Blood Android bridge -> Blood API -> graph`
 
-Current fallbacks:
+Fallbacks only:
 
 `Contour CSV export -> blood.aolabs.io Contour export form -> Blood API -> graph`
 
@@ -27,13 +27,17 @@ Because Contour is not appearing as a Health Connect source on the phone, the br
 
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
-1. Install Blood Bridge on the Android phone.
+1. Install or update Blood Bridge on the Android phone.
 2. In Blood Bridge, enter:
    - endpoint: `https://blood.aolabs.io/api/ingest/glucose-readings`
    - token: Railway `BLOOD_INGEST_TOKEN`
 3. Tap `Grant Bluetooth permission`.
-4. Keep the CONTOUR NEXT ONE near the phone and tap `Sync CONTOUR meter now`.
-5. Open `https://blood.aolabs.io/`.
+4. Tap `Start automatic upload`.
+5. Leave the `Blood Bridge automatic upload` notification running.
+6. Keep the CONTOUR NEXT ONE near the phone after a reading.
+7. Open `https://blood.aolabs.io/`.
+
+The always-on service scans for the meter and posts stored readings in the background. A 15-minute WorkManager job is also scheduled as a backup. `Run one upload check now` is diagnostic only; it is not the normal workflow.
 
 Health Connect backup:
 

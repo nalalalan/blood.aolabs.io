@@ -1,7 +1,10 @@
 package io.aolabs.bloodbridge
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -22,6 +25,8 @@ class MainActivity : ComponentActivity() {
     private val healthConnectProviderPackage = "com.google.android.apps.healthdata"
     private val permissions = BloodBridgeSync.permissions
     private var syncAfterBluetoothPermission = false
+    private var startAlwaysOnAfterBluetoothPermission = false
+    private var startAlwaysOnAfterNotificationPermission = false
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
@@ -41,13 +46,25 @@ class MainActivity : ComponentActivity() {
         val ready = ContourMeterSync.bluetoothPermissions().all { permission -> granted[permission] == true }
         if (ready) {
             setStatus("Bluetooth permission granted. CONTOUR meter sync can run.")
-            if (syncAfterBluetoothPermission) {
+            if (startAlwaysOnAfterBluetoothPermission) {
+                startAlwaysOnAfterBluetoothPermission = false
+                startAlwaysOnUpload()
+            } else if (syncAfterBluetoothPermission) {
                 syncAfterBluetoothPermission = false
                 syncBlood(days = 90)
             }
         } else {
             syncAfterBluetoothPermission = false
+            startAlwaysOnAfterBluetoothPermission = false
             setStatus("Bluetooth permission not granted. The CONTOUR meter cannot sync automatically.")
+        }
+    }
+    private val requestNotificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        if (startAlwaysOnAfterNotificationPermission) {
+            startAlwaysOnAfterNotificationPermission = false
+            startAlwaysOnUpload(skipNotificationPrompt = true)
         }
     }
 
@@ -61,7 +78,17 @@ class MainActivity : ComponentActivity() {
         loadSettings()
         checkAvailability()
         if (BloodBridgeSync.token(this).isNotBlank()) {
-            ensureAutoSync("Auto sync scheduled from saved bridge token. The worker tries the CONTOUR meter first.")
+            BloodBridgeSync.scheduleAutoSync(this)
+            val lastStatus = BloodBridgeSync.prefs(this)
+                .getString(BloodBridgeSync.LAST_AUTO_SYNC_STATUS_KEY, "")
+                .orEmpty()
+            if (BloodBridgeSync.isAlwaysOnEnabled(this) && ContourMeterSync.hasBluetoothPermission(this)) {
+                startAlwaysOnUpload(skipNotificationPrompt = true)
+            } else {
+                setStatus(lastStatus.ifBlank {
+                    "Periodic upload is scheduled. Tap Start automatic upload to keep the meter bridge running continuously."
+                })
+            }
         }
     }
 
@@ -78,7 +105,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Automatic path: CONTOUR NEXT ONE meter over Bluetooth, then Blood API, then blood.aolabs.io. Health Connect is only a backup if another app writes glucose there."
+            text = "Automatic path: CONTOUR NEXT ONE meter over Bluetooth, then Blood API, then blood.aolabs.io. Start automatic upload once and leave the Blood Bridge notification running."
             textSize = 15f
             setPadding(0, padding / 2, 0, padding)
         })
@@ -105,7 +132,17 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "Sync CONTOUR meter now"
+            text = "Start automatic upload"
+            setOnClickListener { startAlwaysOnUpload() }
+        })
+
+        root.addView(Button(this).apply {
+            text = "Stop automatic upload"
+            setOnClickListener { stopAlwaysOnUpload() }
+        })
+
+        root.addView(Button(this).apply {
+            text = "Run one upload check now"
             setOnClickListener { syncBlood(days = 90) }
         })
 
@@ -118,7 +155,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "Sync automatic paths"
+            text = "Run automatic paths once"
             setOnClickListener { syncBlood(days = 14) }
         })
 
@@ -163,6 +200,47 @@ class MainActivity : ComponentActivity() {
         }
         setStatus(message)
         return true
+    }
+
+    private fun startAlwaysOnUpload(skipNotificationPrompt: Boolean = false) {
+        saveSettings()
+        val endpoint = endpointInput.text.toString().trim()
+        val token = tokenInput.text.toString().trim()
+
+        if (endpoint.isBlank() || token.isBlank()) {
+            setStatus("Endpoint and bridge token required before automatic upload can run.")
+            return
+        }
+        if (!ContourMeterSync.hasBluetoothPermission(this)) {
+            setStatus("Bluetooth permission required before automatic upload can run.")
+            startAlwaysOnAfterBluetoothPermission = true
+            requestBluetoothPermission(queueSync = false)
+            return
+        }
+        if (!skipNotificationPrompt && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            startAlwaysOnAfterNotificationPermission = true
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        BloodBridgeSync.setAlwaysOnEnabled(this, true)
+        BloodBridgeSync.scheduleAutoSync(this)
+        BloodBridgeSync.queueImmediateSync(this)
+        try {
+            AlwaysOnSyncService.start(this)
+            setStatus("Automatic upload is running. Keep the Blood Bridge notification active; new meter readings will be checked and posted in the background.")
+        } catch (error: Exception) {
+            setStatus("Automatic upload could not start: ${error.message ?: error.javaClass.simpleName}")
+        }
+    }
+
+    private fun stopAlwaysOnUpload() {
+        BloodBridgeSync.setAlwaysOnEnabled(this, false)
+        BloodBridgeSync.cancelAutoSync(this)
+        AlwaysOnSyncService.stop(this)
+        setStatus("Automatic upload stopped.")
     }
 
     private fun checkAvailability() {

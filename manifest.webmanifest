@@ -1,7 +1,7 @@
 {
   "name": "blood.aolabs.io",
   "short_name": "blood",
-  "description": "Blood glucose graph from automatic CONTOUR NEXT ONE meter bridge uploads.",
+  "description": "Blood glucose graph from always-on CONTOUR NEXT ONE meter bridge uploads.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
