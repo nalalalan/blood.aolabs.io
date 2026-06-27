@@ -11,7 +11,10 @@ class BloodSyncWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         if (BloodBridgeSync.token(applicationContext).isBlank()) {
-            BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync waiting for bridge token.")
+            BloodBridgeSync.saveAutoSyncStatus(
+                applicationContext,
+                "Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io."
+            )
             return Result.success()
         }
 

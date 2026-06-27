@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -67,13 +68,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var endpointInput: EditText
     private lateinit var tokenInput: EditText
     private lateinit var statusText: TextView
+    private lateinit var tokenStateText: TextView
+    private lateinit var advancedSettings: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BloodBridgeSync.ensureDefaultSettings(this)
         setContentView(buildUi())
         loadSettings()
         checkAvailability()
-        if (BloodBridgeSync.token(this).isNotBlank()) {
+        if (BloodBridgeSync.hasUploadToken(this)) {
             BloodBridgeSync.scheduleAutoSync(this)
             val lastStatus = BloodBridgeSync.prefs(this)
                 .getString(BloodBridgeSync.LAST_AUTO_SYNC_STATUS_KEY, "")
@@ -85,6 +89,8 @@ class MainActivity : ComponentActivity() {
                     "Periodic upload is scheduled. Tap Start automatic upload to keep the meter bridge running continuously."
                 })
             }
+        } else {
+            setStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
         }
     }
 
@@ -101,23 +107,28 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, HRV, steps, and sleep, then blood.aolabs.io. Start automatic upload once and leave the Blood Bridge notification running."
+            text = "CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, HRV, steps, and sleep, then blood.aolabs.io. No token paste is part of setup."
             textSize = 15f
             setPadding(0, padding / 2, 0, padding)
         })
+
+        tokenStateText = TextView(this).apply {
+            textSize = 14f
+            setPadding(0, 0, 0, padding / 2)
+        }
+        root.addView(tokenStateText)
 
         endpointInput = EditText(this).apply {
             hint = "endpoint"
             setSingleLine(true)
             setText(BloodBridgeSync.DEFAULT_ENDPOINT)
         }
-        root.addView(endpointInput)
 
         tokenInput = EditText(this).apply {
-            hint = "bridge token"
+            hint = "upload token already loaded"
             setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        root.addView(tokenInput)
 
         root.addView(Button(this).apply {
             text = "Grant Bluetooth permission"
@@ -160,6 +171,30 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { syncHealthConnectMetrics(days = 90) }
         })
 
+        root.addView(Button(this).apply {
+            text = "Advanced settings"
+            setOnClickListener {
+                advancedSettings.visibility = if (advancedSettings.visibility == View.VISIBLE) {
+                    View.GONE
+                } else {
+                    View.VISIBLE
+                }
+            }
+        })
+
+        advancedSettings = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, padding / 2, 0, 0)
+        }
+        advancedSettings.addView(TextView(this).apply {
+            text = "Diagnostic override only. The APK normally carries the upload token."
+            textSize = 13f
+        })
+        advancedSettings.addView(endpointInput)
+        advancedSettings.addView(tokenInput)
+        root.addView(advancedSettings)
+
         statusText = TextView(this).apply {
             text = "Waiting."
             textSize = 14f
@@ -171,9 +206,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadSettings() {
-        val prefs = BloodBridgeSync.prefs(this)
-        endpointInput.setText(prefs.getString("endpoint", endpointInput.text.toString()))
-        tokenInput.setText(prefs.getString("token", ""))
+        BloodBridgeSync.ensureDefaultSettings(this)
+        endpointInput.setText(BloodBridgeSync.endpoint(this))
+        tokenInput.setText(BloodBridgeSync.token(this))
+        updateTokenState()
     }
 
     private fun saveSettings() {
@@ -182,12 +218,21 @@ class MainActivity : ComponentActivity() {
             endpointInput.text.toString().trim(),
             tokenInput.text.toString().trim()
         )
+        updateTokenState()
+    }
+
+    private fun updateTokenState() {
+        tokenStateText.text = if (BloodBridgeSync.hasUploadToken(this)) {
+            "Upload token is already loaded in this APK."
+        } else {
+            "Upload token missing from this APK. Install the latest APK from blood.aolabs.io."
+        }
     }
 
     private fun ensureAutoSync(message: String, queueImmediate: Boolean = true): Boolean {
         saveSettings()
-        if (BloodBridgeSync.token(this).isBlank()) {
-            setStatus("Bridge token required before auto sync can run.")
+        if (!BloodBridgeSync.hasUploadToken(this)) {
+            setStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
             return false
         }
         BloodBridgeSync.scheduleAutoSync(this)
@@ -200,11 +245,11 @@ class MainActivity : ComponentActivity() {
 
     private fun startAlwaysOnUpload(skipNotificationPrompt: Boolean = false) {
         saveSettings()
-        val endpoint = endpointInput.text.toString().trim()
-        val token = tokenInput.text.toString().trim()
+        val endpoint = BloodBridgeSync.endpoint(this)
+        val token = BloodBridgeSync.token(this)
 
         if (endpoint.isBlank() || token.isBlank()) {
-            setStatus("Endpoint and bridge token required before automatic upload can run.")
+            setStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
             return
         }
         if (!ContourMeterSync.hasBluetoothPermission(this)) {
@@ -255,11 +300,11 @@ class MainActivity : ComponentActivity() {
 
     private fun syncBlood(days: Int) {
         saveSettings()
-        val endpoint = endpointInput.text.toString().trim()
-        val token = tokenInput.text.toString().trim()
+        val endpoint = BloodBridgeSync.endpoint(this)
+        val token = BloodBridgeSync.token(this)
 
         if (endpoint.isBlank() || token.isBlank()) {
-            setStatus("Endpoint and bridge token required.")
+            setStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
             return
         }
         if (!ContourMeterSync.hasBluetoothPermission(this)) {
@@ -290,11 +335,11 @@ class MainActivity : ComponentActivity() {
 
     private fun syncHealthConnectMetrics(days: Int) {
         saveSettings()
-        val endpoint = endpointInput.text.toString().trim()
-        val token = tokenInput.text.toString().trim()
+        val endpoint = BloodBridgeSync.endpoint(this)
+        val token = BloodBridgeSync.token(this)
 
         if (endpoint.isBlank() || token.isBlank()) {
-            setStatus("Endpoint and bridge token required.")
+            setStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
             return
         }
 

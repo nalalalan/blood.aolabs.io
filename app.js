@@ -380,7 +380,7 @@ manualEntryForm?.addEventListener("submit", async (event) => {
     return;
   }
   if (!token) {
-    setManualState("Bridge token required.");
+    setManualState("Fallback ingest token required.");
     return;
   }
 
@@ -432,7 +432,7 @@ csvImportForm?.addEventListener("submit", async (event) => {
     return;
   }
   if (!token) {
-    setCsvState("Bridge token required.");
+    setCsvState("Fallback ingest token required.");
     return;
   }
 

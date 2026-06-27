@@ -32,6 +32,8 @@ jobs:
 
       - name: Build debug APK
         working-directory: connectors/health-connect-bridge
+        env:
+          BLOOD_BRIDGE_TOKEN: ${{ secrets.BLOOD_BRIDGE_TOKEN }}
         run: gradle assembleDebug
 
       - name: Upload APK artifact

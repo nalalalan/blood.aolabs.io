@@ -3,6 +3,19 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+fun String.escapeForBuildConfig(): String =
+    replace("\\", "\\\\").replace("\"", "\\\"")
+
+val defaultBridgeToken = (
+    providers.gradleProperty("bloodBridgeToken").orNull
+        ?: providers.environmentVariable("BLOOD_BRIDGE_TOKEN").orNull
+        ?: ""
+).trim()
+
+if (providers.environmentVariable("CI").orNull.equals("true", ignoreCase = true) && defaultBridgeToken.isBlank()) {
+    throw GradleException("BLOOD_BRIDGE_TOKEN is required for CI Blood Bridge APK builds.")
+}
+
 android {
     namespace = "io.aolabs.bloodbridge"
     compileSdk = 35
@@ -11,8 +24,13 @@ android {
         applicationId = "io.aolabs.bloodbridge"
         minSdk = 28
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
+        buildConfigField("String", "DEFAULT_BRIDGE_TOKEN", "\"${defaultBridgeToken.escapeForBuildConfig()}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

@@ -38,6 +38,8 @@ object BloodBridgeSync {
     const val AUTO_WORK_NAME = "blood-auto-sync"
     const val ALWAYS_ON_ENABLED_KEY = "alwaysOnUploadEnabled"
     const val LAST_AUTO_SYNC_STATUS_KEY = "lastAutoSyncStatus"
+    private const val ENDPOINT_KEY = "endpoint"
+    private const val TOKEN_KEY = "token"
 
     val glucosePermission: String = HealthPermission.getReadPermission(BloodGlucoseRecord::class)
     val heartRatePermission: String = HealthPermission.getReadPermission(HeartRateRecord::class)
@@ -57,7 +59,7 @@ object BloodBridgeSync {
     fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun endpoint(context: Context): String =
-        prefs(context).getString("endpoint", DEFAULT_ENDPOINT)?.trim().orEmpty().ifBlank { DEFAULT_ENDPOINT }
+        prefs(context).getString(ENDPOINT_KEY, DEFAULT_ENDPOINT)?.trim().orEmpty().ifBlank { DEFAULT_ENDPOINT }
 
     fun healthMetricsEndpoint(context: Context): String = healthMetricsEndpoint(endpoint(context))
 
@@ -66,14 +68,39 @@ object BloodBridgeSync {
             .replace("/api/ingest/glucose-readings", "/api/ingest/health-metrics")
             .ifBlank { DEFAULT_HEALTH_METRICS_ENDPOINT }
 
+    fun packagedToken(): String = BuildConfig.DEFAULT_BRIDGE_TOKEN.trim()
+
     fun token(context: Context): String =
-        prefs(context).getString("token", "")?.trim().orEmpty()
+        prefs(context).getString(TOKEN_KEY, "")?.trim().orEmpty().ifBlank { packagedToken() }
+
+    fun hasUploadToken(context: Context): Boolean = token(context).isNotBlank()
+
+    fun ensureDefaultSettings(context: Context): Boolean {
+        val prefs = prefs(context)
+        val currentEndpoint = prefs.getString(ENDPOINT_KEY, "")?.trim().orEmpty()
+        val currentToken = prefs.getString(TOKEN_KEY, "")?.trim().orEmpty()
+        val defaultToken = packagedToken()
+        var changed = false
+        val editor = prefs.edit()
+        if (currentEndpoint.isBlank()) {
+            editor.putString(ENDPOINT_KEY, DEFAULT_ENDPOINT)
+            changed = true
+        }
+        if (currentToken.isBlank() && defaultToken.isNotBlank()) {
+            editor.putString(TOKEN_KEY, defaultToken)
+            changed = true
+        }
+        if (changed) editor.apply()
+        return changed
+    }
 
     fun saveSettings(context: Context, endpoint: String, token: String) {
+        val existingToken = prefs(context).getString(TOKEN_KEY, "")?.trim().orEmpty()
+        val nextToken = token.trim().ifBlank { existingToken.ifBlank { packagedToken() } }
         prefs(context)
             .edit()
-            .putString("endpoint", endpoint.trim().ifBlank { DEFAULT_ENDPOINT })
-            .putString("token", token.trim())
+            .putString(ENDPOINT_KEY, endpoint.trim().ifBlank { DEFAULT_ENDPOINT })
+            .putString(TOKEN_KEY, nextToken)
             .apply()
     }
 
@@ -128,7 +155,7 @@ object BloodBridgeSync {
         val metricsEndpoint = healthMetricsEndpoint(endpoint)
         val token = token(context)
         if (endpoint.isBlank() || token.isBlank()) {
-            throw IllegalStateException("Endpoint and bridge token required.")
+            throw IllegalStateException("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
         }
 
         val statuses = mutableListOf<String>()

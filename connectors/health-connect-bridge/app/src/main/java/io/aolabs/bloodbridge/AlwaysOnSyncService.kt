@@ -63,7 +63,7 @@ class AlwaysOnSyncService : Service() {
 
     private suspend fun runSyncOnce() {
         if (BloodBridgeSync.token(this).isBlank()) {
-            updateStatus("Automatic upload waiting for bridge token.")
+            updateStatus("Current Blood Bridge APK is missing its upload token. Install the latest APK from blood.aolabs.io.")
             return
         }
         if (!ContourMeterSync.hasBluetoothPermission(this)) {

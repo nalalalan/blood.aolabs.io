@@ -18,6 +18,8 @@ Default endpoint:
 
 `https://blood.aolabs.io/api/ingest/glucose-readings`
 
-The bridge stores the glucose endpoint and ingest token locally in Android shared preferences. The metrics endpoint is derived from that URL by replacing `/api/ingest/glucose-readings` with `/api/ingest/health-metrics`. Background sync runs through WorkManager after permission and token setup.
+The released APK carries the Blood upload token through generated `BuildConfig` from the GitHub Actions `BLOOD_BRIDGE_TOKEN` secret. The bridge seeds the token into Android shared preferences on first open and preserves it when advanced settings are saved. Token entry is not part of normal setup.
+
+The bridge stores the glucose endpoint and ingest token locally in Android shared preferences. The metrics endpoint is derived from that URL by replacing `/api/ingest/glucose-readings` with `/api/ingest/health-metrics`. Background sync runs through WorkManager after permissions are granted and automatic upload is started.
 
 On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. Grant Blood Bridge blood glucose, heart rate, HRV, steps, sleep, and background Health Connect access.

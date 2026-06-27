@@ -31,9 +31,7 @@ The website cannot directly read another phone app's private storage. Glucose co
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
 1. Install or update Blood Bridge on the Android phone.
-2. In Blood Bridge, enter:
-   - endpoint: `https://blood.aolabs.io/api/ingest/glucose-readings`
-   - token: Railway `BLOOD_INGEST_TOKEN`
+2. Do not paste a token. The current APK is built with the Blood upload token from the GitHub Actions `BLOOD_BRIDGE_TOKEN` secret, which is synced from Railway `BLOOD_INGEST_TOKEN`.
 3. Tap `Grant Bluetooth permission`.
 4. Tap `Grant Health Connect metrics permission`.
 5. Tap `Start automatic upload`.
@@ -89,7 +87,7 @@ Authorization: `Bearer $BLOOD_INGEST_TOKEN`
 
 Authorization: `Bearer $BLOOD_INGEST_TOKEN`
 
-Body: CSV text with date/time and glucose columns. The public page posts this from the Contour export form when a bridge token is entered. The parser accepts common Contour-style columns such as `Date`, `Time`, `Reading (mg/dL)`, `Meal Marker`, and `Notes`.
+Body: CSV text with date/time and glucose columns. The public page posts this only from the fallback Contour export form when an operator supplies the ingest token; the normal Android APK path already carries its upload token. The parser accepts common Contour-style columns such as `Date`, `Time`, `Reading (mg/dL)`, `Meal Marker`, and `Notes`.
 
 `POST /api/ingest/health-metrics`
 
