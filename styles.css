@@ -681,6 +681,35 @@ tbody tr:last-child td {
     min-height: 280px;
   }
 
+  table {
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  th,
+  td {
+    padding: 10px 9px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  th:nth-child(1),
+  td:nth-child(1) {
+    width: 37%;
+  }
+
+  th:nth-child(2),
+  td:nth-child(2) {
+    width: 19%;
+  }
+
+  th:nth-child(3),
+  td:nth-child(3),
+  th:nth-child(4),
+  td:nth-child(4) {
+    width: 22%;
+  }
+
   .sync-steps {
     grid-template-columns: 1fr;
     margin-top: 14px;
