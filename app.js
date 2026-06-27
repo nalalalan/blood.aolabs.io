@@ -116,6 +116,19 @@ function renderBoundary(message, detail = "") {
 function buildSeries(data) {
   const healthTrends = data?.health?.trends || {};
   const latest = data?.health?.latest || {};
+  const latestGlucose = latest.glucose || data?.latest || null;
+  const latestSleepMinutes = latest.sleep?.asleepMinutes ?? latest.sleep?.value;
+  const currentLabels = {
+    glucose: latestGlucose?.valueMgDl ? `${latestGlucose.valueMgDl} mg/dL` : "",
+    "heart-rate": latest.heartRate?.value ? `${latest.heartRate.value} bpm` : "",
+    hrv: latest.hrv?.value ? `${latest.hrv.value} ms` : "",
+    sleep: latestSleepMinutes != null && Number.isFinite(Number(latestSleepMinutes))
+      ? `${(Number(latestSleepMinutes) / 60).toFixed(1)} h`
+      : "",
+    steps: latest.steps?.value != null && Number.isFinite(Number(latest.steps.value))
+      ? `${formatNumber(latest.steps.value)} steps`
+      : ""
+  };
   const withLatest = (points, latestMetric, valueMapper = (metric) => metric?.value) => {
     if (points.length || !latestMetric?.measuredAt) return points;
     const value = valueMapper(latestMetric);
@@ -132,6 +145,7 @@ function buildSeries(data) {
       title: "Glucose",
       unit: "mg/dL",
       empty: "Waiting for CONTOUR meter upload.",
+      currentLabel: currentLabels.glucose,
       reference: [70, 180],
       yFloor: 60,
       yCeil: 200,
@@ -147,6 +161,7 @@ function buildSeries(data) {
       title: "HR",
       unit: "bpm",
       empty: "Waiting for Health Connect heart rate.",
+      currentLabel: currentLabels["heart-rate"],
       yFloor: 45,
       yCeil: 120,
       ticks: [50, 70, 90, 110, 130],
@@ -161,6 +176,7 @@ function buildSeries(data) {
       title: "HRV",
       unit: "ms",
       empty: "Waiting for a true Health Connect HRV/RMSSD record.",
+      currentLabel: currentLabels.hrv,
       yFloor: 0,
       yCeil: 100,
       ticks: [0, 25, 50, 75, 100],
@@ -175,6 +191,7 @@ function buildSeries(data) {
       title: "Sleep",
       unit: "h",
       empty: "Waiting for Health Connect sleep.",
+      currentLabel: currentLabels.sleep,
       yFloor: 0,
       yCeil: 10,
       ticks: [0, 2, 4, 6, 8, 10],
@@ -192,6 +209,7 @@ function buildSeries(data) {
       title: "Steps",
       unit: "steps",
       empty: "Waiting for Health Connect steps.",
+      currentLabel: currentLabels.steps,
       yFloor: 0,
       yCeil: 20000,
       ticks: [0, 5000, 10000, 15000, 20000],
@@ -318,9 +336,9 @@ function renderAllCharts(data) {
       })
       .join("");
     const latest = points[points.length - 1];
-    const latestLabel = latest
+    const latestLabel = series.currentLabel || (latest
       ? `${formatAxisValue(latest.value, series.unit)} ${series.unit}`
-      : series.empty;
+      : series.empty);
     const band = series.reference
       ? `<rect class="reference-band" x="${pad.left}" y="${Math.min(yFor(series.reference[0]), yFor(series.reference[1])).toFixed(1)}" width="${plotWidth}" height="${Math.abs(yFor(series.reference[0]) - yFor(series.reference[1])).toFixed(1)}"></rect>`
       : "";
