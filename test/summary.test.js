@@ -44,10 +44,10 @@ test("empty summary names the automatic meter bridge boundary", () => {
   const summary = summarizeReadings([]);
   assert.equal(summary.status, "waiting_for_contour_sync");
   assert.match(summary.message, /automatic CONTOUR NEXT ONE Bluetooth glucose upload/);
-  assert.match(summary.message, /Blood estimates HRV from heart-rate samples/);
+  assert.match(summary.message, /Blood estimates HRV from sleep\/rest heart-rate samples/);
   assert.equal(summary.health.status, "waiting_for_health_metrics");
   assert.equal(summary.health.latest.steps.value, null);
-  assert.equal(summary.health.anxiety.score, 2);
+  assert.equal(summary.health.anxiety.score, 4.4);
 });
 
 test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
@@ -76,30 +76,36 @@ test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
   assert.equal(health.trends.hrv.length, 1);
   assert.equal(health.trends.sleep[0].value, 300);
   assert.equal(health.trends.steps[0].value, 900);
-  assert.equal(health.anxiety.scale, "1-5");
-  assert.ok(health.anxiety.score >= 3);
+  assert.equal(health.anxiety.scale, "1-10");
+  assert.ok(health.anxiety.score >= 6);
   assert.equal(health.anxiety.suggestion.source, "heart_rate");
 });
 
 test("calculates estimated HRV from enough heart-rate samples", () => {
+  const heartRate = Array.from({ length: 80 }, (_, index) => ({
+    measuredAt: new Date(Date.UTC(2026, 5, 27, 2, index, 0)).toISOString(),
+    valueBpm: index % 2 === 0 ? 60 : 62
+  }));
   const metrics = sanitizeHealthPayload({
     source: "health-connect",
     capturedAt: "2026-06-27T12:00:00.000Z",
-    heartRate: [
-      { measuredAt: "2026-06-27T11:57:00.000Z", valueBpm: 60 },
-      { measuredAt: "2026-06-27T11:58:00.000Z", valueBpm: 62 },
-      { measuredAt: "2026-06-27T11:59:00.000Z", valueBpm: 60 }
-    ]
+    heartRate,
+    sleepSessions: [{
+      startTime: "2026-06-27T02:00:00.000Z",
+      endTime: "2026-06-27T03:30:00.000Z"
+    }]
   });
   const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
 
   assert.equal(health.latest.hrv.value, 32);
   assert.equal(health.latest.hrv.unit, "ms_est");
   assert.equal(health.latest.hrv.estimated, true);
-  assert.equal(health.latest.hrv.basis, "heart_rate_samples");
-  assert.equal(health.latest.hrv.sampleCount, 3);
-  assert.equal(health.latest.hrv.pairCount, 2);
-  assert.equal(health.latest.hrv.quality, "dense_hr_estimate");
+  assert.equal(health.latest.hrv.basis, "sleep_heart_rate_samples");
+  assert.equal(health.latest.hrv.sampleCount, 80);
+  assert.ok(health.latest.hrv.pairCount >= 120);
+  assert.equal(health.latest.hrv.quality, "sleep_dense_hr_estimate");
+  assert.equal(health.latest.hrv.confidence, "highest_available_without_beat_intervals");
+  assert.ok(health.latest.hrv.restWindowCount > 1);
   assert.equal(health.trends.hrv.length, 1);
   assert.match(health.anxiety.factors.find((factor) => factor.key === "hrv")?.label || "", /estimated HRV/);
 });
@@ -120,14 +126,18 @@ test("does not estimate HRV from too few heart-rate samples", () => {
 });
 
 test("prefers source HRV over calculated HRV for the same date", () => {
+  const heartRate = Array.from({ length: 80 }, (_, index) => ({
+    measuredAt: new Date(Date.UTC(2026, 5, 27, 2, index, 0)).toISOString(),
+    valueBpm: index % 2 === 0 ? 60 : 63
+  }));
   const metrics = sanitizeHealthPayload({
     source: "health-connect",
     capturedAt: "2026-06-27T12:00:00.000Z",
-    heartRate: [
-      { measuredAt: "2026-06-27T11:57:00.000Z", valueBpm: 60 },
-      { measuredAt: "2026-06-27T11:58:00.000Z", valueBpm: 63 },
-      { measuredAt: "2026-06-27T11:59:00.000Z", valueBpm: 60 }
-    ],
+    heartRate,
+    sleepSessions: [{
+      startTime: "2026-06-27T02:00:00.000Z",
+      endTime: "2026-06-27T03:30:00.000Z"
+    }],
     hrv: [{ measuredAt: "2026-06-27T07:30:00.000Z", rmssdMs: 41 }]
   });
   const health = summarizeHealthMetrics(metrics, null, null);

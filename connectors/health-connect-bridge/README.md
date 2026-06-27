@@ -1,6 +1,6 @@
 # Blood Android Bridge
 
-This Android bridge reads a nearby CONTOUR NEXT ONE meter over the Bluetooth Glucose service and posts readings to `blood.aolabs.io`. It also reads Health Connect heart rate, steps, and sleep records and posts them to Blood. HRV is calculated by Blood when source HRV is unavailable. Health Connect `BloodGlucoseRecord` remains a backup glucose source only when another app actually writes glucose there. The bridge cannot read the Contour app's private storage.
+This Android bridge reads a nearby CONTOUR NEXT ONE meter over the Bluetooth Glucose service and posts readings to `blood.aolabs.io`. It also reads Health Connect heart rate, steps, and sleep records and posts them to Blood. HRV is estimated by Blood from sleep/rest heart-rate samples when source HRV is unavailable. Health Connect `BloodGlucoseRecord` remains a backup glucose source only when another app actually writes glucose there. The bridge cannot read the Contour app's private storage.
 
 Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
 
@@ -24,4 +24,4 @@ Advanced diagnostics can override the glucose endpoint locally. The metrics endp
 
 On Android 14 and newer, Health Connect is reached from Settings -> Security and privacy -> Privacy Controls -> Health Connect. It may not appear as a normal app icon. Grant Blood Bridge blood glucose, heart rate, steps, sleep, and background Health Connect access.
 
-True HRV is uploaded only when Health Connect exposes real RMSSD HRV records. Missing HRV permission does not block metric sync; Blood calculates a labeled estimate from sufficiently dense heart-rate samples.
+True HRV is uploaded only when Health Connect exposes real RMSSD HRV records. Missing HRV permission does not block metric sync; Blood calculates a labeled estimate from sufficiently dense sleep/rest heart-rate samples.

@@ -77,6 +77,19 @@ function formatHrvMetric(metric) {
   return `${Math.round(Number(metric.value))} ms${metric.estimated || metric.derived ? " est" : ""}`;
 }
 
+function formatScore10(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score)) return "2.0";
+  return score.toFixed(1);
+}
+
+function hrvBasisLabel(metric) {
+  if (!metric?.estimated && !metric?.derived) return "source RMSSD";
+  if (metric.basis === "sleep_heart_rate_samples") return "sleep HR estimate";
+  if (metric.basis === "resting_heart_rate_samples") return "resting HR estimate";
+  return "HR estimate";
+}
+
 function daysAgo(days) {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -180,7 +193,7 @@ function buildSeries(data) {
       key: "hrv",
       title: "HRV",
       unit: "ms",
-      empty: "Waiting for enough heart-rate samples.",
+      empty: "Waiting for enough sleep/rest HR samples.",
       currentLabel: currentLabels.hrv,
       yFloor: 0,
       yCeil: 100,
@@ -188,7 +201,7 @@ function buildSeries(data) {
       points: withLatest([...(healthTrends.hrv || [])].map((metric) => ({
         measuredAt: metric.measuredAt,
         value: metric.value,
-        title: `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)}${metric.quality ? ` (${metric.quality.replace(/_/g, " ")})` : ""}`
+        title: `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)} (${hrvBasisLabel(metric)}${metric.confidence ? `, ${metric.confidence.replace(/_/g, " ")}` : ""})`
       })), latest.hrv)
     },
     {
@@ -409,7 +422,7 @@ function renderHealth(data) {
   const asleepMinutes = sleep?.asleepMinutes ?? sleep?.value;
   const stepCount = steps?.value;
 
-  if (anxietyScore) anxietyScore.textContent = Number.isFinite(Number(anxiety.score)) ? anxiety.score : "2";
+  if (anxietyScore) anxietyScore.textContent = formatScore10(anxiety.score);
   if (anxietyLabel) {
     const label = anxiety.label ? `Estimate: ${anxiety.label}.` : "Waiting for full metrics.";
     const captured = health.lastCapturedAt ? ` Metrics upload ${formatDateTime(health.lastCapturedAt)}.` : "";

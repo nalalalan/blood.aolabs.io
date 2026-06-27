@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg?v=20260627-suite-drop">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260627-calculated-hrv-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260627-accurate-hrv-score-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -62,29 +62,51 @@
         <button id="refresh-button" type="button">Refresh</button>
       </div>
 
-      <div class="latest-strip is-boundary" aria-label="latest glucose state">
-        <div class="latest-value">
-          <span id="latest-value">No data</span>
-          <small id="latest-unit"></small>
-        </div>
-        <div>
-          <strong id="latest-time">No readings yet.</strong>
-          <span id="latest-source">No upload from CONTOUR meter bridge.</span>
-        </div>
-        <div>
-          <strong id="range-summary">No data</strong>
-          <span id="range-detail">Selected range.</span>
-        </div>
-      </div>
-
-      <div class="health-strip" aria-label="current health state">
+      <div class="anxiety-strip" aria-label="current anxiety estimate">
         <div class="anxiety-readout">
           <span>Anxiety estimate</span>
           <div>
-            <strong id="anxiety-score">2</strong>
-            <small>/5</small>
+            <strong id="anxiety-score">2.0</strong>
+            <small>/10</small>
           </div>
           <p id="anxiety-label">Waiting for full metrics.</p>
+        </div>
+        <div class="health-suggestion">
+          <strong id="suggestion-time">After upload</strong>
+          <span id="suggestion-action">Blood will choose the next stabilizing action from the current outlier.</span>
+          <small id="suggestion-reason">Personal estimate, not diagnosis.</small>
+        </div>
+      </div>
+
+      <div class="range-controls" aria-label="graph range">
+        <button type="button" data-range="1">24h</button>
+        <button type="button" data-range="7" class="is-active">7d</button>
+        <button type="button" data-range="30">30d</button>
+        <button type="button" data-range="all">All</button>
+      </div>
+
+      <div class="chart-frame">
+        <div id="charts" class="charts" role="img" aria-label="glucose, heart rate, HRV, sleep, and steps graphs"></div>
+      </div>
+      <div class="chart-note">
+        <span>All graphs use the same time axis.</span>
+        <span>HRV uses source RMSSD when available; otherwise Blood estimates from sleep/rest HR samples.</span>
+      </div>
+
+      <div class="health-strip" aria-label="current health state">
+        <div class="latest-strip is-boundary" aria-label="latest glucose state">
+          <div class="latest-value">
+            <span id="latest-value">No data</span>
+            <small id="latest-unit"></small>
+          </div>
+          <div>
+            <strong id="latest-time">No readings yet.</strong>
+            <span id="latest-source">No upload from CONTOUR meter bridge.</span>
+          </div>
+          <div>
+            <strong id="range-summary">No data</strong>
+            <span id="range-detail">Selected range.</span>
+          </div>
         </div>
         <div class="health-metrics">
           <div>
@@ -108,26 +130,6 @@
             <strong id="metric-steps">Waiting</strong>
           </div>
         </div>
-        <div class="health-suggestion">
-          <strong id="suggestion-time">After upload</strong>
-          <span id="suggestion-action">Blood will choose the next stabilizing action from the current outlier.</span>
-          <small id="suggestion-reason">Personal estimate, not diagnosis.</small>
-        </div>
-      </div>
-
-      <div class="range-controls" aria-label="graph range">
-        <button type="button" data-range="1">24h</button>
-        <button type="button" data-range="7" class="is-active">7d</button>
-        <button type="button" data-range="30">30d</button>
-        <button type="button" data-range="all">All</button>
-      </div>
-
-      <div class="chart-frame">
-        <div id="charts" class="charts" role="img" aria-label="glucose, heart rate, HRV, sleep, and steps graphs"></div>
-      </div>
-      <div class="chart-note">
-        <span>All graphs use the same time axis.</span>
-        <span>HRV is estimated from HR samples when source HRV is unavailable.</span>
       </div>
     </section>
 
@@ -156,7 +158,7 @@
     <section class="sync-section" id="sync" aria-labelledby="sync-title">
       <div>
         <h2 id="sync-title">Phone bridge</h2>
-        <p>Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, sleep, and steps; Blood calculates HRV when source HRV is unavailable.</p>
+        <p>Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, sleep, and steps; Blood estimates HRV from sleep/rest HR when source HRV is unavailable.</p>
         <a class="download-link" href="./downloads/blood-bridge.apk" download>Download Blood Bridge APK</a>
       </div>
       <div class="sync-steps" aria-label="sync setup">
@@ -221,6 +223,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=20260627-calculated-hrv-v1" defer></script>
+  <script src="./app.js?v=20260627-accurate-hrv-score-v1" defer></script>
 </body>
 </html>

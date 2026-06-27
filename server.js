@@ -811,6 +811,92 @@ function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function standardDeviation(values) {
+  const normalized = values.filter((value) => Number.isFinite(Number(value))).map(Number);
+  if (!normalized.length) return 0;
+  const mean = average(normalized);
+  const variance = normalized.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / normalized.length;
+  return Math.sqrt(variance);
+}
+
+function hrvSleepWindows(metrics, date) {
+  return metrics
+    .filter((metric) => metric.type === "sleep" && metric.startTime && metric.endTime)
+    .filter((metric) => metric.date === date || metric.endTime.slice(0, 10) === date || metric.startTime.slice(0, 10) === date)
+    .map((metric) => ({
+      start: new Date(metric.startTime).getTime(),
+      end: new Date(metric.endTime).getTime()
+    }))
+    .filter((window) => Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start);
+}
+
+function pointInWindows(point, windows) {
+  return windows.some((window) => point.time >= window.start && point.time <= window.end);
+}
+
+function hrvCandidateWindow(points, maxPairGapMs = 3 * 60 * 1000) {
+  if (points.length < 10) return null;
+
+  const pairs = [];
+  const gapMinutes = [];
+  const bpmSteps = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const gapMs = points[index].time - points[index - 1].time;
+    if (gapMs <= 0 || gapMs > maxPairGapMs) continue;
+    const rrDiff = points[index].rrMs - points[index - 1].rrMs;
+    pairs.push(rrDiff * rrDiff);
+    gapMinutes.push(gapMs / 60_000);
+    bpmSteps.push(Math.abs(points[index].value - points[index - 1].value));
+  }
+  if (pairs.length < 8) return null;
+
+  const bpmValues = points.map((point) => point.value);
+  const bpmMedian = median(bpmValues);
+  const bpmStdDev = standardDeviation(bpmValues);
+  const bpmStepMedian = median(bpmSteps) || 0;
+  const durationMinutes = (points[points.length - 1].time - points[0].time) / 60_000;
+  const medianGap = median(gapMinutes) || 0;
+  if (durationMinutes < 8 || medianGap <= 0) return null;
+  if (bpmMedian > 95 || bpmStdDev > 9 || bpmStepMedian > 5) return null;
+
+  const rmssd = Math.sqrt(pairs.reduce((sum, value) => sum + value, 0) / pairs.length);
+  if (!Number.isFinite(rmssd) || rmssd < 1 || rmssd > 300) return null;
+
+  return {
+    value: rmssd,
+    pairCount: pairs.length,
+    medianGap,
+    bpmMedian,
+    bpmStdDev,
+    bpmStepMedian,
+    durationMinutes,
+    startTime: points[0].measuredAt,
+    endTime: points[points.length - 1].measuredAt,
+    score: bpmMedian + (bpmStdDev * 5) + (bpmStepMedian * 4) + (medianGap * 2)
+  };
+}
+
+function hrvWindowCandidates(points) {
+  const candidates = [];
+  const windowMinutes = 30;
+  for (let start = 0; start < points.length; start += 1) {
+    const startTime = points[start].time;
+    const windowPoints = [];
+    for (let index = start; index < points.length; index += 1) {
+      const point = points[index];
+      if (point.time - startTime > windowMinutes * 60_000) break;
+      if (windowPoints.length) {
+        const gapMs = point.time - windowPoints[windowPoints.length - 1].time;
+        if (gapMs > 3 * 60 * 1000) break;
+      }
+      windowPoints.push(point);
+    }
+    const candidate = hrvCandidateWindow(windowPoints);
+    if (candidate) candidates.push(candidate);
+  }
+  return candidates;
+}
+
 function metricTrend(metrics, type, limit = 900) {
   return metrics
     .filter((metric) => metric.type === type)
@@ -833,7 +919,10 @@ function metricTrend(metrics, type, limit = 900) {
       quality: metric.quality,
       sampleCount: metric.sampleCount,
       pairCount: metric.pairCount,
-      medianGapMinutes: metric.medianGapMinutes
+      medianGapMinutes: metric.medianGapMinutes,
+      confidence: metric.confidence,
+      restWindowCount: metric.restWindowCount,
+      windowMinutes: metric.windowMinutes
     }));
 }
 
@@ -859,23 +948,42 @@ function calculatedHrvTrend(metrics, limit = 90) {
       }
     }
     const points = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
-    if (points.length < 3) continue;
+    if (points.length < 10) continue;
 
-    const rrDiffSquares = [];
-    const gapMinutes = [];
-    for (let index = 1; index < points.length; index += 1) {
-      const gapMs = points[index].time - points[index - 1].time;
-      if (gapMs <= 0 || gapMs > 45 * 60 * 1000) continue;
-      const diff = points[index].rrMs - points[index - 1].rrMs;
-      rrDiffSquares.push(diff * diff);
-      gapMinutes.push(gapMs / 60_000);
+    const sleepWindows = hrvSleepWindows(metrics, date);
+    const sleepPoints = sleepWindows.length ? points.filter((point) => pointInWindows(point, sleepWindows)) : [];
+    let basis = sleepPoints.length >= 10 ? "sleep_heart_rate_samples" : "resting_heart_rate_samples";
+    let candidates = hrvWindowCandidates(sleepPoints.length >= 10 ? sleepPoints : points);
+    if (basis === "sleep_heart_rate_samples" && !candidates.length) {
+      basis = "resting_heart_rate_samples";
+      candidates = hrvWindowCandidates(points);
     }
-    if (rrDiffSquares.length < 2) continue;
+    if (!candidates.length) continue;
 
-    const rawValue = Math.sqrt(rrDiffSquares.reduce((sum, value) => sum + value, 0) / rrDiffSquares.length);
+    const selected = candidates
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 8);
+    const rawValue = median(selected.map((candidate) => candidate.value));
     const value = Math.max(1, Math.min(300, Math.round(rawValue)));
-    const medianGap = median(gapMinutes) || 0;
-    const last = points[points.length - 1];
+    const pairCount = selected.reduce((sum, candidate) => sum + candidate.pairCount, 0);
+    if (pairCount < 20) continue;
+
+    const medianGap = median(selected.map((candidate) => candidate.medianGap)) || 0;
+    const latestWindowEnd = selected
+      .map((candidate) => candidate.endTime)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    const last = points.find((point) => point.measuredAt === latestWindowEnd) || points[points.length - 1];
+    const confidence = basis === "sleep_heart_rate_samples" && medianGap <= 1.5 && pairCount >= 120
+      ? "highest_available_without_beat_intervals"
+      : medianGap <= 2.5 && pairCount >= 60
+        ? "strong_proxy"
+        : "limited_proxy";
+    const qualityPrefix = basis === "sleep_heart_rate_samples" ? "sleep" : "resting";
+    const quality = medianGap <= 1.5 && selected.length >= 2
+      ? `${qualityPrefix}_dense_hr_estimate`
+      : `${qualityPrefix}_sampled_hr_estimate`;
     const metric = {
       metricId: "",
       clientRecordId: `calculated-hrv-${date}`,
@@ -893,11 +1001,14 @@ function calculatedHrvTrend(metrics, limit = 90) {
         .at(-1) || last.capturedAt || null,
       derived: true,
       estimated: true,
-      basis: "heart_rate_samples",
-      quality: medianGap <= 5 ? "dense_hr_estimate" : medianGap <= 15 ? "sampled_hr_estimate" : "sparse_hr_estimate",
+      basis,
+      quality,
+      confidence,
       sampleCount: points.length,
-      pairCount: rrDiffSquares.length,
-      medianGapMinutes: Number(medianGap.toFixed(1))
+      pairCount,
+      medianGapMinutes: Number(medianGap.toFixed(1)),
+      restWindowCount: selected.length,
+      windowMinutes: Math.round(median(selected.map((candidate) => candidate.durationMinutes)) || 0)
     };
     metric.metricId = stableMetricId(metric);
     estimates.push(metric);
@@ -1084,7 +1195,7 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
     }
   }
 
-  const score = Math.max(1, Math.min(5, Math.round(raw)));
+  const score = Number(Math.max(1, Math.min(10, raw * 2)).toFixed(1));
   const primary = [...factors].sort((a, b) => b.points - a.points)[0] || null;
   const time = nextStabilizingTime();
   const suggestion = primary
@@ -1103,8 +1214,8 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
 
   return {
     score,
-    scale: "1-5",
-    label: score <= 1 ? "low" : score <= 2 ? "steady" : score === 3 ? "watch" : score === 4 ? "high" : "very high",
+    scale: "1-10",
+    label: score <= 2.5 ? "low" : score <= 4.5 ? "steady" : score <= 6.5 ? "watch" : score <= 8 ? "high" : "very high",
     raw: Number(raw.toFixed(2)),
     factors,
     suggestion,
@@ -1205,7 +1316,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       days: [],
       health,
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
-      message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, sleep, and steps, and Blood estimates HRV from heart-rate samples."
+      message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, sleep, and steps, and Blood estimates HRV from sleep/rest heart-rate samples."
     };
   }
 

@@ -261,7 +261,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(128px, .74fr) minmax(0, 1.6fr) minmax(0, 1fr);
   gap: 16px;
-  margin: 22px 0 14px;
+  margin: 0;
   padding: 14px;
   border: 1px solid rgba(159, 48, 65, .18);
   border-radius: 8px;
@@ -320,12 +320,20 @@ h2 {
   font-weight: 650;
 }
 
-.health-strip {
+.anxiety-strip {
   display: grid;
-  grid-template-columns: minmax(142px, .55fr) minmax(360px, 1.45fr);
+  grid-template-columns: minmax(170px, .48fr) minmax(0, 1.52fr);
   gap: 12px;
   align-items: stretch;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
+}
+
+.health-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
+  gap: 12px;
+  align-items: stretch;
+  margin: 16px 0 0;
 }
 
 .anxiety-readout,
@@ -361,7 +369,7 @@ h2 {
 }
 
 .anxiety-readout strong {
-  font-size: 46px;
+  font-size: clamp(46px, 7vw, 76px);
   line-height: .9;
   font-weight: 820;
   font-variant-numeric: tabular-nums;
@@ -412,12 +420,11 @@ h2 {
 }
 
 .health-suggestion {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
   gap: 10px 14px;
   align-items: center;
-  padding: 11px 12px;
+  padding: 14px;
 }
 
 .health-suggestion strong {
@@ -849,6 +856,7 @@ tbody tr:last-child td {
     margin-top: 0;
   }
 
+  .anxiety-strip,
   .health-strip {
     grid-template-columns: 1fr;
   }
