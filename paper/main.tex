@@ -1,0 +1,288 @@
+\pdfminorversion=7
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[american]{babel}
+\usepackage{csquotes}
+
+\usepackage[
+    style=science,
+    backend=biber,
+    sorting=none,
+    articletitle=true,
+    url=false,
+    doi=false,
+    eprint=false,
+    isbn=false
+]{biblatex}
+\addbibresource{references.bib}
+\AtEveryBibitem{\clearlist{language}}
+
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[margin=0.92in,top=0.82in,bottom=0.95in,headsep=18pt,footskip=24pt]{geometry}
+\usepackage[font=small,labelfont=bf,labelsep=period]{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{afterpage}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{needspace}
+\usepackage{etoolbox}
+\usepackage[section]{placeins}
+\usepackage{flafter}
+\usepackage[table]{xcolor}
+
+\definecolor{ClayLine}{HTML}{EEDBDD}
+\definecolor{SumiInk}{HTML}{2D2426}
+\definecolor{DustyTaupe}{HTML}{866A6D}
+
+\usepackage[hidelinks]{hyperref}
+\usepackage[switch]{lineno}
+
+\color{SumiInk}
+\setstretch{1.45}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.42em}
+\setlength{\textfloatsep}{8pt plus 1pt minus 1pt}
+\setlength{\floatsep}{7pt plus 1pt minus 1pt}
+\setlength{\intextsep}{7pt plus 1pt minus 1pt}
+\setlength{\abovecaptionskip}{5pt}
+\setlength{\belowcaptionskip}{2pt}
+\setlength{\tabcolsep}{9pt}
+\renewcommand{\arraystretch}{1.14}
+\captionsetup{justification=raggedright,singlelinecheck=false}
+\setlist[itemize]{leftmargin=1.3em,itemsep=0.18em,topsep=0.25em}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.8}
+\setlength{\headheight}{24pt}
+\emergencystretch=2em
+\raggedbottom
+
+\titleformat{\section}
+  {\Large\sffamily\bfseries\color{SumiInk}}
+  {\thesection}
+  {0.6em}
+  {}
+  [\vspace{0.25em}\color{ClayLine}\titlerule]
+\titleformat{\subsection}
+  {\large\sffamily\bfseries\color{SumiInk}}
+  {\thesubsection}
+  {0.55em}
+  {}
+\titleformat{\subsubsection}
+  {\normalsize\sffamily\bfseries\color{SumiInk}}
+  {}
+  {0em}
+  {}
+\titlespacing*{\section}{0pt}{1.3ex plus 0.4ex minus 0.2ex}{0.7ex}
+\titlespacing*{\subsection}{0pt}{1.15ex plus 0.2ex minus 0.2ex}{0.45ex}
+\titlespacing*{\subsubsection}{0pt}{0.9ex plus 0.15ex minus 0.1ex}{0.25ex}
+
+\pretocmd{\subsubsection}{\needspace{4\baselineskip}}{}{}
+\pretocmd{\subsection}{\needspace{5\baselineskip}}{}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize\sffamily\color{SumiInk} Blood anxiety score}
+\fancyhead[R]{\footnotesize\sffamily\color{DustyTaupe}\nouppercase{\leftmark}}
+\fancyfoot[C]{\footnotesize\sffamily\thepage}
+\renewcommand{\headrulewidth}{0.35pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ClayLine}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}
+
+\makeatletter
+\def\fps@figure{tbp}
+\def\fps@table{tbp}
+\makeatother
+
+\begin{document}
+\linenumbers
+\thispagestyle{empty}
+
+\begin{center}
+    \vspace*{-0.6em}
+
+    {\fontsize{20}{22}\selectfont\bfseries\color{SumiInk}
+    Blood: source-bounded personal anxiety scoring from glucose and wearable signals\par}
+
+    \vspace{0.95em}
+
+    {\normalsize\color{SumiInk}
+    Alan N. Pham$^{1}$\par}
+
+    \vspace{0.38em}
+
+    {\small\color{DustyTaupe}
+    $^{1}$AO Labs, Worcester, MA, USA\par}
+\end{center}
+
+\vspace{0.35em}
+\noindent\textbf{Blood is a private personal health record that turns automatic CONTOUR NEXT ONE glucose readings and phone-derived health signals into one visible stabilization score and five aligned source graphs. The anxiety estimate is not a diagnosis and does not infer mental state from a model trained on other people. It is a deterministic, source-bounded index calculated from current glucose, heart rate, heart-rate variability (HRV), sleep, and steps. The score starts from a neutral personal baseline, adds positive weight for physiologic states that can feel like stress or reduce recovery, subtracts weight for steady source states, scales the result to a one-decimal 1--10 display, and selects one current-block more/less adjustment from the strongest current outlier. When Health Connect does not expose true RMSSD HRV, Blood marks HRV as estimated and computes it only from dense, low-noise sleep or resting heart-rate windows. A live read on June 27, 2026 at 3:11 PM ET produced a 4.4/10 score from 120 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV, 431 minutes asleep, and 14,764 recent steps. The system is therefore a transparent self-monitoring surface: every score can be reconstructed from the source values and rule table.}
+
+\newpage
+\pagestyle{fancy}
+
+\section{Introduction}
+
+Many personal health apps show glucose, sleep, heart rate, or activity as separate traces. That separation is technically clean, but it leaves the user to decide which signal explains the current body state. Blood was built for the opposite interface problem: a current glucose reading or wearable signal should not become another small dashboard burden. It should become one clear score, then the source graphs that make the score auditable.
+
+The score is intentionally called an anxiety estimate rather than an anxiety diagnosis. Blood does not classify psychiatric anxiety, does not use population diagnosis labels, and does not claim that one biomarker proves a mental state. The implementation uses physiologic signals only as personal stabilization evidence. Low blood glucose can produce adrenergic symptoms such as fast heartbeat, shaking, sweating, nervousness, or anxiety~\cite{cdc2024hypoglycemia}. HRV standards define variability from beat-to-beat RR intervals and distinguish true HRV measurement from looser heart-rate summaries~\cite{taskforce1996hrv}. Reduced HRV is associated with anxiety disorders in meta-analytic literature, but the effect is group-level and not sufficient for diagnosing an individual state~\cite{chalmers2014anxiety}. Blood therefore treats HRV as one recovery signal among several, not as a standalone mental-health label.
+
+The data path is also bounded. Android Health Connect exposes categories such as activity, sleep, vitals, and blood glucose, and Samsung Health can share selected Samsung Health data through Health Connect~\cite{androidhealthconnect2026,samsunghealthconnect2025}. In the current Blood deployment, glucose reaches the server from a Blood Bridge path connected to the CONTOUR NEXT ONE meter, while heart rate, sleep, and steps come from Health Connect records written by the phone or wearable. When a source does not provide true HRV, Blood computes a labeled proxy from heart-rate samples only when the sample geometry is strong enough to make the estimate useful.
+
+\section{Results}
+
+\subsection{A single score remains reconstructable from source values}
+
+Blood renders the anxiety estimate first and then immediately renders five aligned graphs for glucose, heart rate, HRV, sleep, and steps. The placement matters because the score is the current state, while the graphs are the audit trail. The display value is computed by:
+
+\[
+S = \mathrm{round}_{0.1}\left(\min\left(10,\max\left(1,2R\right)\right)\right)
+\]
+
+where $R$ is the raw additive score and $S$ is the visible 1--10 score. The raw score starts at $R=2.2$. Source-specific factors then add or subtract the values shown in Table~\ref{tab:score_rules}. Positive values raise the anxiety estimate. Negative values lower it.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Deterministic anxiety-score factors in the current Blood deployment. The final visible score is $2R$, clamped to 1--10 and rounded to one decimal place.}
+\label{tab:score_rules}
+\begin{tabular}{p{0.22\textwidth}p{0.45\textwidth}r}
+\toprule
+Signal & Rule & Raw change \\
+\midrule
+Glucose & $<$70 mg/dL & +1.00 \\
+Glucose & $>$180 mg/dL & +0.90 \\
+Glucose & $<$82 or $>$140 mg/dL & +0.35 \\
+Glucose & 82--140 mg/dL & -0.15 \\
+Heart rate & $\geq$100 bpm & +0.85 \\
+Heart rate & $\geq$85 bpm & +0.40 \\
+Heart rate & 55--75 bpm & -0.15 \\
+HRV or estimated HRV & $<$25 ms & +0.80 \\
+HRV or estimated HRV & $<$40 ms & +0.45 \\
+HRV or estimated HRV & $\geq$65 ms & -0.25 \\
+Sleep & $<$300 minutes asleep & +0.90 \\
+Sleep & $<$360 minutes asleep & +0.45 \\
+Sleep & $\geq$420 minutes asleep & -0.25 \\
+Steps & $<$1,500 recent steps & +0.35 \\
+Steps & $<$4,000 recent steps & +0.15 \\
+Steps & $\geq$8,000 recent steps & -0.25 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This additive design is deliberately small. A glucose crash, very short sleep, high heart rate, or low HRV can move the score, but no single signal silently becomes the whole answer. Stable signals can offset a stressed signal. Missing signals do not create fake precision; they simply do not contribute.
+
+\subsection{The live score has a full audit trail}
+
+Table~\ref{tab:live_snapshot} reconstructs the live Blood score checked on June 27, 2026 at 3:11 PM ET. The current score is not a black-box output. It is the arithmetic sum of five visible source states.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Live score reconstruction from the Blood summary API on June 27, 2026 at 3:11 PM ET.}
+\label{tab:live_snapshot}
+\begin{tabular}{p{0.26\textwidth}p{0.44\textwidth}r}
+\toprule
+Term & Source state & Raw contribution \\
+\midrule
+Baseline & Personal neutral starting point & +2.20 \\
+Glucose & 120 mg/dL, inside the target band & -0.15 \\
+Heart rate & 68 bpm, inside the calm band & -0.15 \\
+Estimated HRV & 12 ms estimated HRV, below 25 ms & +0.80 \\
+Sleep & 431 minutes asleep, at least 420 minutes & -0.25 \\
+Steps & 14,764 recent steps, at least 8,000 & -0.25 \\
+\midrule
+Raw total & $2.20 - 0.15 - 0.15 + 0.80 - 0.25 - 0.25$ & 2.20 \\
+Visible score & $2 \times 2.20$, clamped and rounded & 4.4/10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The label associated with the score is also deterministic: scores at or below 2.5 are labeled low, scores through 4.5 steady, scores through 6.5 watch, scores through 8 high, and higher scores very high. The live 4.4/10 score is therefore labeled steady.
+
+\subsection{HRV is source-preferred and proxy-labeled}
+
+The HRV value used in the anxiety score is true HRV only when a source HRV/RMSSD record exists. Blood preserves that value and labels its basis as source RMSSD. When a true HRV record is absent, Blood estimates HRV from heart-rate samples and labels the result with \texttt{ms\_est}. The estimator converts heart rate to an RR interval using:
+
+\[
+RR_i = \frac{60000}{\mathrm{bpm}_i}
+\]
+
+It then computes an RMSSD-like proxy over adjacent RR differences:
+
+\[
+\widehat{HRV} = \sqrt{\frac{1}{n}\sum_{i=2}^{n+1}\left(RR_i - RR_{i-1}\right)^2}
+\]
+
+The current estimator rejects weak windows before producing a value. It deduplicates heart-rate records by timestamp, prefers points inside sleep windows when at least ten such points exist, otherwise searches resting windows, and evaluates 30-minute candidate windows. A candidate must contain at least ten points, at least eight adjacent pairs, a duration of at least eight minutes, no adjacent gap above three minutes, median heart rate no higher than 95 bpm, heart-rate standard deviation no higher than 9 bpm, and median adjacent heart-rate step no higher than 5 bpm. Blood ranks valid candidates by lower median heart rate, lower variability, smaller adjacent steps, and tighter sample gaps; it then takes the median HRV value across the best eight windows. The aggregate candidate set must provide at least 20 accepted pairs.
+
+This is stronger than a day-wide heart-rate swing, but it is still not the same as a chest-strap or ECG-grade beat-to-beat HRV record. The deployed API therefore carries \texttt{basis}, \texttt{quality}, \texttt{confidence}, sample count, pair count, median gap, selected-window count, and window length. The live value is 12 ms estimated from sleep heart-rate samples with 735 samples, 240 accepted pairs, eight selected windows, sleep-dense estimate quality, and highest-available-without-beat-intervals confidence.
+
+\section{Discussion}
+
+Blood's anxiety score is best understood as a personal stabilization index. It is useful when it reduces the work of deciding which current body signal deserves attention. It is not useful if it is treated as a medical diagnosis, a universal anxiety scale, or proof that one biomarker explains a mood state.
+
+The main design choice is transparency. The score can be computed by hand from the table. The front page shows the score first because that is the current state Alan asked to see, and it places the graphs immediately after the score because the graphs are the source audit. The same structure also keeps recommendations bounded. Blood selects the next suggestion from the strongest positive factor, not from a generated personality profile. The wording is deliberately simple: current time block plus one more/less adjustment. If low glucose is the strongest factor, Blood asks for carb plus protein more and empty-stomach work less. If heart rate is strongest, it asks for slow exhales or easy walking more and screen or phone checking less. If estimated HRV is strongest, it asks for food and water first more and task switching less. If sleep is short, it asks for small tasks more and heavy decisions less. If steps are low, it asks for walking more and sitting still less. The time label is not a delay instruction or learned pattern; it is only the current Eastern time block: morning, midday, afternoon, evening, or night.
+
+The strongest limitation is HRV. HRV is defined from beat-to-beat intervals, and sampled heart-rate records are a compressed derivative of that signal~\cite{taskforce1996hrv}. Blood reduces that problem by selecting dense sleep/rest windows and labeling the proxy, but the result remains a proxy. The second limitation is calibration. The current weights are personal, deterministic, and inspectable; they are not learned from a clinical dataset and have not been validated against symptom diaries. A future version should store Alan's own reported anxiety, caffeine, meal, medication, illness, and stressor context when he chooses to provide it, then evaluate whether the fixed weights should be changed.
+
+\section{Materials and Methods}
+
+\subsection{System inputs}
+
+The Blood server stores glucose readings and health metrics separately. Glucose records include measured time, capture time, source, reading identifier, mg/dL value, relation to meal when available, and specimen source. The current automatic glucose path is the CONTOUR NEXT ONE meter bridge. Health metrics include heart rate, HRV when exposed, sleep sessions, and step windows. The public summary endpoint is \texttt{/api/blood/summary}; write endpoints require the Blood ingest token.
+
+\subsection{Score implementation}
+
+The current anxiety score is implemented by \texttt{estimateAnxietyState} in \texttt{server.js}. The function receives the latest glucose, heart-rate, HRV, sleep, and recent-step values from the summary builder. It initializes \texttt{raw = 2.2}, applies the factor table, computes \texttt{score = clamp(1, 10, raw * 2)}, and rounds to one decimal place. It returns \texttt{score}, \texttt{scale}, \texttt{label}, \texttt{raw}, \texttt{factors}, \texttt{suggestion}, and the note \enquote{Personal stabilization estimate from current health signals; not a diagnosis.}
+
+\subsection{HRV estimator}
+
+The HRV trend function first keeps any source HRV records and marks them as source RMSSD. It then calculates proxy HRV only for dates without source HRV. Heart-rate records are grouped by date, deduplicated by \texttt{measuredAt}, sorted by time, and converted to RR intervals. Candidate windows are continuous 30-minute spans with no sample gap above three minutes. Windows with too few samples, too few adjacent pairs, short duration, high median heart rate, high heart-rate standard deviation, or high adjacent heart-rate steps are rejected. The selected estimate is the median RMSSD-like value from the best-ranked candidates, with metadata exposed in the API and chart tooltip.
+
+\section{Acknowledgements}
+
+The paper records the current Blood implementation and Alan Pham's requested interface contract: the anxiety score belongs at the top of the page, the graphs follow immediately, and HRV must be labeled according to the strongest source basis available.
+
+\section{Funding}
+
+No external funding is associated with this software paper.
+
+\section{Author contributions}
+
+Alan N. Pham defined the application need, source preferences, scoring placement, and automatic-bridge requirements. Codex implemented the current paper and checked it against the deployed Blood source.
+
+\section{Competing interests}
+
+The author declares no competing interests.
+
+\section{Data availability}
+
+The live public summary exposes current compact Blood state at the Blood summary API. Private write tokens, raw export tokens, and private device data are not public.
+
+\section{Code availability}
+
+The implementation is in the Blood application source, including \texttt{server.js}, \texttt{app.js}, and the Android bridge connector. Public routes are \texttt{https://blood.aolabs.io/} and the fallback mirror \texttt{https://aolabs.io/blood/}.
+
+\section{Additional information}
+
+This paper is a single-user system record. It should not be used for diagnosis, treatment, or medication decisions. The anxiety estimate is a personal software index for stabilizing attention around current physiologic signals.
+
+\printbibliography
+
+\end{document}

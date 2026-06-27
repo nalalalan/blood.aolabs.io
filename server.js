@@ -1105,11 +1105,13 @@ function easternHour(date = new Date()) {
   return Number.parseInt(parts.find((part) => part.type === "hour")?.value || "0", 10);
 }
 
-function nextStabilizingTime(hour = easternHour()) {
-  if (hour < 10) return "10:30 AM";
-  if (hour < 14) return "2:30 PM";
-  if (hour < 18) return "6:30 PM";
-  return "tomorrow morning";
+function currentTimeBlock(hour = easternHour()) {
+  if (hour < 5) return "night";
+  if (hour < 10) return "morning";
+  if (hour < 14) return "midday";
+  if (hour < 18) return "afternoon";
+  if (hour < 22) return "evening";
+  return "night";
 }
 
 function pushFactor(factors, key, label, points, reason, action) {
@@ -1117,7 +1119,7 @@ function pushFactor(factors, key, label, points, reason, action) {
   factors.push({ key, label, points: Number(points.toFixed(2)), reason, action });
 }
 
-function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
+function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour } = {}) {
   const factors = [];
   let raw = 2.2;
 
@@ -1125,16 +1127,16 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
     const value = glucose.valueMgDl;
     if (value < 70) {
       raw += 1.0;
-      pushFactor(factors, "glucose", "glucose low", 1.0, `${value} mg/dL is below range.`, "Pair a quick carb with protein, then recheck the graph.");
+      pushFactor(factors, "glucose", "glucose low", 1.0, `${value} mg/dL is below range.`, "Carb plus protein more; empty-stomach work less.");
     } else if (value > 180) {
       raw += 0.9;
-      pushFactor(factors, "glucose", "glucose high", 0.9, `${value} mg/dL is above range.`, "Walk 10 minutes after food and keep the next meal steadier.");
+      pushFactor(factors, "glucose", "glucose high", 0.9, `${value} mg/dL is above range.`, "Easy walking more; extra sugar less.");
     } else if (value < 82 || value > 140) {
       raw += 0.35;
-      pushFactor(factors, "glucose", "glucose edge", 0.35, `${value} mg/dL is near the edge of the target band.`, "Use protein/fiber first at the next meal.");
+      pushFactor(factors, "glucose", "glucose edge", 0.35, `${value} mg/dL is near the edge of the target band.`, "Protein and fiber more; naked carbs less.");
     } else {
       raw -= 0.15;
-      pushFactor(factors, "glucose", "glucose stable", -0.15, `${value} mg/dL is inside the target band.`, "Keep meals boringly steady.");
+      pushFactor(factors, "glucose", "glucose stable", -0.15, `${value} mg/dL is inside the target band.`, "Steady meals more; random snacks less.");
     }
   }
 
@@ -1142,13 +1144,13 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
     const value = heartRate.value;
     if (value >= 100) {
       raw += 0.85;
-      pushFactor(factors, "heart_rate", "HR high", 0.85, `${value} bpm is elevated.`, "Do three minutes of slow exhale breathing before the next task.");
+      pushFactor(factors, "heart_rate", "HR high", 0.85, `${value} bpm is elevated.`, "Slow exhales more; screen checking less.");
     } else if (value >= 85) {
       raw += 0.4;
-      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm is raised.`, "Take a short walk without checking the phone.");
+      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm is raised.`, "Easy walking more; phone checking less.");
     } else if (value >= 55 && value <= 75) {
       raw -= 0.15;
-      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm is calm.`, "Use the calm window for one hard thing.");
+      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm is calm.`, "Focused work more; task switching less.");
     }
   }
 
@@ -1157,13 +1159,13 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
     const labelPrefix = hrv.estimated || hrv.derived ? "estimated HRV" : "HRV";
     if (value < 25) {
       raw += 0.8;
-      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Reduce task switching and delay caffeine until after food/water.");
+      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Food and water first more; task switching less.");
     } else if (value < 40) {
       raw += 0.45;
-      pushFactor(factors, "hrv", `${labelPrefix} soft`, 0.45, `${value} ms ${labelPrefix} is soft.`, "Use one quiet reset before the next work block.");
+      pushFactor(factors, "hrv", `${labelPrefix} soft`, 0.45, `${value} ms ${labelPrefix} is soft.`, "Quiet reset more; multitasking less.");
     } else if (value >= 65) {
       raw -= 0.25;
-      pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Use the high-recovery window.");
+      pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Hard focus more; context switching less.");
     }
   }
 
@@ -1172,32 +1174,32 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
     const hours = minutes / 60;
     if (minutes < 300) {
       raw += 0.9;
-      pushFactor(factors, "sleep", "sleep short", 0.9, `${hours.toFixed(1)}h asleep is short.`, "Keep the first work block smaller and get bright light early.");
+      pushFactor(factors, "sleep", "sleep short", 0.9, `${hours.toFixed(1)}h asleep is short.`, "Small tasks more; heavy decisions less.");
     } else if (minutes < 360) {
       raw += 0.45;
-      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Protect one low-friction reset window.");
+      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Low-friction reset more; extra commitments less.");
     } else if (minutes >= 420) {
       raw -= 0.25;
-      pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "Spend the recovery on one concrete thing.");
+      pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "One concrete push more; drift less.");
     }
   }
 
   if (Number.isFinite(recentSteps)) {
     if (recentSteps < 1500) {
       raw += 0.35;
-      pushFactor(factors, "steps", "steps low", 0.35, `${recentSteps} steps in the recent window is low.`, "Add one 10-minute walk at the next stable time.");
+      pushFactor(factors, "steps", "steps low", 0.35, `${recentSteps} steps in the recent window is low.`, "Walking more; sitting still less.");
     } else if (recentSteps < 4000) {
       raw += 0.15;
-      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Use a short walk as the reset.");
+      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Short walks more; phone scrolling less.");
     } else if (recentSteps >= 8000) {
       raw -= 0.25;
-      pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Keep movement steady, not intense.");
+      pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Steady movement more; intensity less.");
     }
   }
 
   const score = Number(Math.max(1, Math.min(10, raw * 2)).toFixed(1));
   const primary = [...factors].sort((a, b) => b.points - a.points)[0] || null;
-  const time = nextStabilizingTime();
+  const time = currentTimeBlock(Number.isFinite(Number(hour)) ? Number(hour) : easternHour());
   const suggestion = primary
     ? {
       time,
@@ -1207,7 +1209,7 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps }) {
     }
     : {
       time,
-      action: "Keep the next block simple and repeat the steady pattern.",
+      action: "Steady pattern more; extra switching less.",
       reason: "No current outlier is available.",
       source: "none"
     };
@@ -1462,6 +1464,14 @@ app.post(
   }
 );
 
+app.get("/paper", (_req, res) => {
+  res.sendFile(path.join(__dirname, "paper.html"));
+});
+
+app.get("/paper.pdf", (_req, res) => {
+  res.sendFile(path.join(__dirname, "paper.pdf"));
+});
+
 app.use(express.static(__dirname, {
   extensions: ["html"],
   maxAge: process.env.NODE_ENV === "production" ? "5m" : 0,
@@ -1499,5 +1509,6 @@ module.exports = {
   sanitizeHealthPayload,
   summarizeHealthMetrics,
   estimateAnxietyState,
+  currentTimeBlock,
   summarizeReadings
 };

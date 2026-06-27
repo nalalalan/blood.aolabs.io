@@ -3,5 +3,7 @@ data/
 .env
 .railway/
 *.log
+paper/build/
+tmp/
 connectors/health-connect-bridge/.gradle/
 connectors/health-connect-bridge/app/build/

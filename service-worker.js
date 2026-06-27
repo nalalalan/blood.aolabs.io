@@ -1,7 +1,9 @@
-const CACHE_NAME = "blood-aolabs-20260627-accurate-hrv-score-v1";
+const CACHE_NAME = "blood-aolabs-20260627-paper-v1";
 const ASSETS = [
   "./",
   "./index.html",
+  "./paper.html",
+  "./paper.pdf",
   "./styles.css",
   "./app.js",
   "./icon.svg?v=20260627-suite-drop",

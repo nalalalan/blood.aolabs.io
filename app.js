@@ -436,7 +436,9 @@ function renderHealth(data) {
   setMetricValue(metricSteps, stepCount != null && Number.isFinite(Number(stepCount)) ? `${formatNumber(stepCount)} steps` : "");
 
   const suggestion = anxiety.suggestion || {};
-  if (suggestionTime) suggestionTime.textContent = suggestion.time || "After upload";
+  if (suggestionTime) {
+    suggestionTime.textContent = suggestion.time ? `Now: ${suggestion.time}` : "Now";
+  }
   if (suggestionAction) {
     suggestionAction.textContent = suggestion.action || "Blood will choose the next stabilizing action from the current outlier.";
   }

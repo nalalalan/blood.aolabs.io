@@ -5,6 +5,8 @@ const {
   parseContourCsv,
   sanitizeHealthPayload,
   sanitizePayload,
+  currentTimeBlock,
+  estimateAnxietyState,
   summarizeHealthMetrics,
   summarizeReadings
 } = require("../server");
@@ -146,4 +148,21 @@ test("prefers source HRV over calculated HRV for the same date", () => {
   assert.equal(health.latest.hrv.value, 41);
   assert.equal(health.latest.hrv.estimated, false);
   assert.equal(health.latest.hrv.basis, "health_connect_rmssd");
+});
+
+test("anxiety suggestion uses current block and one more-less action", () => {
+  assert.equal(currentTimeBlock(17), "afternoon");
+  const anxiety = estimateAnxietyState({
+    glucose: { valueMgDl: 112 },
+    heartRate: { value: 104 },
+    hrv: { value: 45 },
+    sleep: { asleepMinutes: 430 },
+    recentSteps: 8300,
+    hour: 17
+  });
+
+  assert.equal(anxiety.suggestion.time, "afternoon");
+  assert.equal(anxiety.suggestion.source, "heart_rate");
+  assert.equal(anxiety.suggestion.action, "Slow exhales more; screen checking less.");
+  assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
 });
