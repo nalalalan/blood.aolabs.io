@@ -112,7 +112,8 @@ test("calculates estimated HRV from enough clean sleep heart-rate samples", () =
   assert.equal(health.latest.hrv.confidence, "highest_available_without_beat_intervals");
   assert.ok(health.latest.hrv.restWindowCount >= 4);
   assert.equal(health.trends.hrv.length, 1);
-  assert.match(health.anxiety.factors.find((factor) => factor.key === "hrv")?.label || "", /estimated HRV/);
+  assert.equal(health.anxiety.factors.some((factor) => factor.key === "hrv"), false);
+  assert.match(health.anxiety.condition.summary, /Estimated HRV looks normal for this Blood estimate/);
 });
 
 test("does not estimate HRV from too few heart-rate samples", () => {
@@ -173,7 +174,7 @@ test("prefers source HRV over calculated HRV for the same date", () => {
   assert.equal(health.latest.hrv.basis, "health_connect_rmssd");
 });
 
-test("anxiety suggestion uses latest upload source state and one positive action", () => {
+test("anxiety condition uses overall source state and one positive action", () => {
   assert.equal(currentTimeBlock(17), "afternoon");
   const anxiety = estimateAnxietyState({
     glucose: { valueMgDl: 112 },
@@ -184,15 +185,18 @@ test("anxiety suggestion uses latest upload source state and one positive action
     hour: 17
   });
 
-  assert.equal(anxiety.suggestion.label, "Latest upload");
+  assert.equal(anxiety.suggestion.label, "Overall condition");
   assert.equal(anxiety.suggestion.source, "heart_rate");
   assert.equal(anxiety.suggestion.reason, "104 bpm HR is too high.");
   assert.equal(anxiety.suggestion.action, "Water more; protein/fiber snack more; easy walk more.");
+  assert.equal(anxiety.condition.label, "Overall condition");
+  assert.match(anxiety.condition.summary, /Elevated|HR is high|HR is raised|glucose is steady/i);
+  assert.match(anxiety.condition.watch, /Easy moves:/);
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
   assert.doesNotMatch(`${anxiety.suggestion.label} ${anxiety.suggestion.reason} ${anxiety.suggestion.action}`, /\bnow\b|outlier|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
-test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
+test("estimated HRV alone reads normal for the estimate instead of too low", () => {
   const anxiety = estimateAnxietyState({
     glucose: { valueMgDl: 104 },
     heartRate: { value: 68 },
@@ -202,11 +206,11 @@ test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
     hour: 23
   });
 
-  assert.equal(anxiety.suggestion.label, "Latest upload");
-  assert.equal(anxiety.suggestion.source, "hrv");
-  assert.equal(anxiety.suggestion.reason, "12 ms estimated HRV is too low.");
-  assert.equal(anxiety.suggestion.action, "Water more; protein/fiber meal rhythm more; gentle walk more.");
-  assert.doesNotMatch(anxiety.suggestion.action, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
+  assert.equal(anxiety.suggestion.label, "Overall condition");
+  assert.notEqual(anxiety.suggestion.source, "hrv");
+  assert.match(anxiety.condition.summary, /Estimated HRV looks normal for this Blood estimate/);
+  assert.doesNotMatch(`${anxiety.suggestion.reason} ${anxiety.condition.summary} ${anxiety.condition.watch}`, /estimated HRV is too low|estimated HRV too low/i);
+  assert.doesNotMatch(anxiety.condition.watch, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
 test("stale sleep does not drive the current anxiety action", () => {
@@ -368,13 +372,13 @@ test("instability patterns identify the strongest source-backed time block", () 
   assert.equal(patterns.status, "active");
   assert.equal(patterns.currentBlock, "night");
   assert.equal(patterns.prediction.block, "night");
-  assert.match(patterns.prediction.title, /night/);
+  assert.equal(patterns.prediction.title, "Things to watch");
   assert.match(patterns.prediction.detail, /glucose|HR|HRV/);
-  assert.match(patterns.prediction.detail, /too high|too low|near high|raised|light|short/);
+  assert.match(patterns.prediction.detail, /too high|HRV low|near high|raised|light|short/);
   assert.match(patterns.prediction.detail, /mg\/dL|bpm|ms|h|steps/);
   assert.doesNotMatch(patterns.prediction.detail, /sleep|asleep/i);
   assert.doesNotMatch(patterns.prediction.detail, /flagged|outlier|source samples|read high, low, short, light, or raised/i);
-  assert.match(patterns.prediction.basis, /recalculates after each upload/);
+  assert.match(patterns.prediction.basis, /updates after each upload/);
 });
 
 test("sleep-only history stays off the visible pattern recommendation", () => {
@@ -398,7 +402,7 @@ test("sleep-only history stays off the visible pattern recommendation", () => {
   });
 
   assert.equal(patterns.status, "best_effort");
-  assert.match(patterns.detail, /No clear spike or dip yet|Consider/);
+  assert.match(patterns.detail, /No clear spike or dip yet|Easy moves/);
   assert.doesNotMatch(`${patterns.title} ${patterns.detail} ${patterns.prediction?.detail || ""}`, /sleep|asleep|too short|short|Need more|learning/i);
 });
 
@@ -416,9 +420,10 @@ test("thin data pattern still gives best-effort abnormal signal and action", () 
   });
 
   assert.equal(patterns.status, "best_effort");
-  assert.match(patterns.title, /Pattern:/);
-  assert.match(patterns.detail, /possible dip signal|HRV too low|23 ms|Consider/);
-  assert.match(patterns.detail, /Water more; protein\/fiber meal rhythm more; gentle walk more/);
+  assert.equal(patterns.title, "Things to watch");
+  assert.match(patterns.detail, /possible dip signal|HRV low|23 ms|Easy moves/);
+  assert.match(patterns.simpleDetail, /Things to watch|Current watchout|HRV can dip|Easy moves/i);
+  assert.match(patterns.detail, /drink water|eat protein\/fiber with carbs|take an easy walk/);
   assert.doesNotMatch(`${patterns.title} ${patterns.detail}`, /Need more|learning|sleep|asleep|too short|short|phone|screen|breath|task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 

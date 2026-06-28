@@ -8,7 +8,7 @@ const latestSource = document.getElementById("latest-source");
 const rangeSummary = document.getElementById("range-summary");
 const rangeDetail = document.getElementById("range-detail");
 const charts = document.getElementById("charts");
-const latestStrip = document.querySelector(".latest-strip");
+const currentReadings = document.querySelector(".current-readings");
 const readingsBody = document.getElementById("readings-body");
 const recordCount = document.getElementById("record-count");
 const rangeButtons = Array.from(document.querySelectorAll("[data-range]"));
@@ -114,6 +114,16 @@ function sourceFreshnessText(data) {
   }
 
   return parts.join(" ");
+}
+
+function currentReadingsTime(data) {
+  return data?.health?.lastCapturedAt || data?.lastCapturedAt || data?.latest?.measuredAt || "";
+}
+
+function currentReadingsSourceText(data) {
+  const glucoseAt = data?.latest?.measuredAt ? `Glucose ${formatDateTime(data.latest.measuredAt)}.` : "";
+  const healthAt = data?.health?.lastCapturedAt ? `Health ${formatDateTime(data.health.lastCapturedAt)}.` : "";
+  return [healthAt, glucoseAt].filter(Boolean).join(" ") || "Waiting for bridge response.";
 }
 
 function metricStamp(metric, field = "measuredAt") {
@@ -398,8 +408,8 @@ function renderAllCharts(data) {
       "No graph data reached Blood.",
       "Install or update Blood Bridge, grant Bluetooth and Health Connect metrics, then tap Start automatic upload once."
     );
-    rangeSummary.textContent = "No data";
-    rangeDetail.textContent = "Selected range.";
+    if (rangeSummary) rangeSummary.textContent = "No data";
+    if (rangeDetail) rangeDetail.textContent = "Selected range.";
     return;
   }
 
@@ -409,11 +419,11 @@ function renderAllCharts(data) {
     const min = Math.min(...values);
     const max = Math.max(...values);
     const avg = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-    rangeSummary.textContent = `${min}-${max}`;
-    rangeDetail.textContent = `${glucosePoints.length} readings, ${avg} mg/dL avg.`;
+    if (rangeSummary) rangeSummary.textContent = `${min}-${max}`;
+    if (rangeDetail) rangeDetail.textContent = `${glucosePoints.length} readings, ${avg} mg/dL avg.`;
   } else {
-    rangeSummary.textContent = "No glucose";
-    rangeDetail.textContent = "Health metrics only.";
+    if (rangeSummary) rangeSummary.textContent = "No glucose";
+    if (rangeDetail) rangeDetail.textContent = "Health metrics only.";
   }
 
   const narrow = window.innerWidth <= 760;
@@ -546,13 +556,13 @@ function renderPatterns(data) {
   const patterns = data?.patterns || {};
   const prediction = patterns.prediction || null;
   if (patternTitle) {
-    patternTitle.textContent = patterns.title || prediction?.title || "Pattern: checking";
+    patternTitle.textContent = "Things to watch";
   }
   if (patternDetail) {
-    patternDetail.textContent = patterns.detail || prediction?.detail || "No clear spike or dip yet. Consider water plus normal food more; easy walk more.";
+    patternDetail.textContent = patterns.simpleDetail || prediction?.simpleDetail || patterns.detail || prediction?.detail || "No clear spike or dip yet. Easy moves: drink water; eat normally; take an easy walk.";
   }
   if (patternBasis) {
-    patternBasis.textContent = patterns.basis || prediction?.basis || "Recalculates after each upload.";
+    patternBasis.textContent = patterns.basis || prediction?.basis || "Updates after each upload.";
   }
 }
 
@@ -573,9 +583,9 @@ function renderHealth(data) {
     anxietyScore.textContent = formatScore10(anxiety.score);
   }
   if (anxietyLabel) {
-    const label = anxiety.label ? `Estimate: ${anxiety.label}.` : "Waiting for full metrics.";
-    const captured = health.lastCapturedAt ? ` Metrics upload ${formatDateTime(health.lastCapturedAt)}.` : "";
-    anxietyLabel.textContent = `${label}${captured}`;
+    anxietyLabel.textContent = health.lastCapturedAt
+      ? `Source read ${formatDateTime(health.lastCapturedAt)}.`
+      : "Waiting for current metrics.";
   }
   if (freshnessLine) {
     freshnessLine.textContent = sourceFreshnessText(data);
@@ -588,17 +598,16 @@ function renderHealth(data) {
   setMetricValue(metricSleep, asleepMinutes != null && Number.isFinite(Number(asleepMinutes)) ? formatHours(asleepMinutes) : "");
   setMetricValue(metricSteps, stepCount != null && Number.isFinite(Number(stepCount)) ? `${formatNumber(stepCount)} steps` : "");
 
+  const condition = anxiety.condition || {};
   const suggestion = anxiety.suggestion || {};
   if (suggestionTime) {
-    suggestionTime.textContent = suggestion.label || "Latest upload";
+    suggestionTime.textContent = condition.label || suggestion.label || "Overall condition";
   }
   if (suggestionAction) {
-    const reason = suggestion.reason || "";
-    const action = suggestion.action || "Blood will choose the next food, water, or movement action from the latest uploaded source state.";
-    suggestionAction.textContent = reason ? `${reason} ${action}` : action;
+    suggestionAction.textContent = condition.summary || "Blood will read the current glucose, HR, HRV trend, sleep, and steps together.";
   }
   if (suggestionReason) {
-    suggestionReason.textContent = anxiety.note || "Personal estimate, not diagnosis.";
+    suggestionReason.textContent = condition.watch || anxiety.note || "Source-bounded personal health read, not diagnosis.";
   }
 }
 
@@ -606,13 +615,13 @@ function renderData(data) {
   latestData = data;
   renderHealth(data);
   if (!data?.latest) {
-    latestStrip.classList.add("is-boundary");
-    latestValue.textContent = "No data";
-    latestUnit.textContent = "";
+    currentReadings?.classList.add("is-boundary");
+    if (latestValue) latestValue.textContent = "No data";
+    if (latestUnit) latestUnit.textContent = "";
     latestTime.textContent = "No readings yet.";
     latestSource.textContent = "No upload from CONTOUR meter bridge.";
-    rangeSummary.textContent = "No data";
-    rangeDetail.textContent = "Selected range.";
+    if (rangeSummary) rangeSummary.textContent = "No data";
+    if (rangeDetail) rangeDetail.textContent = "Selected range.";
     syncLine.textContent = data?.message || "No readings have reached Blood. Waiting for the automatic CONTOUR meter bridge upload.";
     renderAllCharts(data);
     renderTable(data);
@@ -620,11 +629,11 @@ function renderData(data) {
   }
 
   const latest = data.latest;
-  latestStrip.classList.remove("is-boundary");
-  latestValue.textContent = latest.valueMgDl;
-  latestUnit.textContent = "mg/dL";
-  latestTime.textContent = formatDateTime(latest.measuredAt);
-  latestSource.textContent = sourceLabel(latest);
+  currentReadings?.classList.remove("is-boundary");
+  if (latestValue) latestValue.textContent = latest.valueMgDl;
+  if (latestUnit) latestUnit.textContent = "mg/dL";
+  latestTime.textContent = currentReadingsTime(data) ? formatDateTime(currentReadingsTime(data)) : "Current readings";
+  latestSource.textContent = currentReadingsSourceText(data);
   syncLine.textContent = [
     data.lastCapturedAt ? `Glucose upload ${formatDateTime(data.lastCapturedAt)}.` : "Glucose upload time missing.",
     data.health?.lastCapturedAt ? `Health upload ${formatDateTime(data.health.lastCapturedAt)}.` : "Health upload waiting."

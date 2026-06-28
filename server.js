@@ -1260,6 +1260,16 @@ function recencyWeight(measuredAt, now = new Date()) {
 const ACTIONABLE_PATTERN_SOURCES = new Set(["glucose", "heart_rate", "hrv", "steps"]);
 const SLEEP_ACTION_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
+function isEstimatedHrvMetric(metric = {}) {
+  if (!metric) return false;
+  return Boolean(
+    metric.estimated ||
+    metric.derived ||
+    String(metric.unit || "").includes("est") ||
+    (metric.basis && metric.basis !== "health_connect_rmssd")
+  );
+}
+
 function sourceTimeMs(metric) {
   const candidates = [metric?.measuredAt, metric?.endTime, metric?.date];
   for (const candidate of candidates) {
@@ -1278,7 +1288,7 @@ function metricFreshForAction(metric, referenceAt, maxAgeMs = SLEEP_ACTION_MAX_A
   return referenceTime - measuredTime <= maxAgeMs && measuredTime <= referenceTime + 60_000;
 }
 
-function patternScore(source, value) {
+function patternScore(source, value, metric = {}) {
   const number = Number(value);
   if (!Number.isFinite(number)) return { score: 0, reason: "" };
 
@@ -1297,8 +1307,9 @@ function patternScore(source, value) {
   }
 
   if (source === "hrv") {
-    if (number < 25) return { score: 0.8, reason: "HRV too low" };
-    if (number < 40) return { score: 0.45, reason: "HRV low" };
+    if (isEstimatedHrvMetric(metric)) return { score: 0, reason: "" };
+    if (number < 25) return { score: 0.65, reason: "HRV low" };
+    if (number < 40) return { score: 0.35, reason: "HRV low" };
     return { score: 0, reason: "" };
   }
 
@@ -1356,10 +1367,10 @@ function buildPatternStats() {
   }]));
 }
 
-function addPatternObservation(stats, measuredAt, source, value, now) {
+function addPatternObservation(stats, measuredAt, source, value, now, metric = {}) {
   const block = timeBlockFromTimestamp(measuredAt);
   if (!block || !stats.has(block)) return;
-  const result = patternScore(source, value);
+  const result = patternScore(source, value, metric);
   const weight = recencyWeight(measuredAt, now);
   const item = stats.get(block);
   item.observations += 1;
@@ -1407,8 +1418,20 @@ function patternActionForItem(item = {}) {
   if (source === "glucose") return "Protein/fiber with carbs more; water more; easy walk more.";
   if (source === "heart_rate") return "Water more; protein/fiber snack more; easy walk more.";
   if (source === "hrv") return "Water more; protein/fiber meal rhythm more; gentle walk more.";
-  if (source === "steps") return "Water more; normal meals more; short walks more.";
+  if (source === "steps") return "Water more; normal meals more; easy walk more.";
   return "Water plus normal food more; easy walk more.";
+}
+
+function easyActionText(action = "") {
+  const text = String(action || "").toLowerCase();
+  const actions = [];
+  if (text.includes("carb plus protein")) actions.push("have a carb plus protein snack");
+  if (text.includes("protein/fiber")) actions.push("eat protein/fiber with carbs");
+  if (text.includes("normal food") || text.includes("normal meals")) actions.push("eat a normal meal");
+  if (text.includes("water")) actions.push("drink water");
+  if (text.includes("walk") || text.includes("movement") || text.includes("exercise")) actions.push("take an easy walk");
+  const unique = [...new Set(actions)].slice(0, 3);
+  return unique.length ? `${unique.join("; ")}.` : "drink water; eat normally; take an easy walk.";
 }
 
 function patternMoveLabel(item = {}) {
@@ -1715,14 +1738,14 @@ function latestActionablePatternItem({ readings = [], health = {}, now = new Dat
   }
   const latestGlucose = latest.glucose || readings[0] || null;
   const sourceValues = [
-    { source: "glucose", value: latestGlucose?.valueMgDl, measuredAt: latestGlucose?.measuredAt },
-    { source: "heart_rate", value: latest.heartRate?.value, measuredAt: latest.heartRate?.measuredAt },
-    { source: "hrv", value: latest.hrv?.value, measuredAt: latest.hrv?.measuredAt },
-    { source: "steps", value: latest.steps?.value, measuredAt: patternObservationTime(latest.steps, now) }
+    { source: "glucose", value: latestGlucose?.valueMgDl, measuredAt: latestGlucose?.measuredAt, metric: latestGlucose },
+    { source: "heart_rate", value: latest.heartRate?.value, measuredAt: latest.heartRate?.measuredAt, metric: latest.heartRate },
+    { source: "hrv", value: latest.hrv?.value, measuredAt: latest.hrv?.measuredAt, metric: latest.hrv },
+    { source: "steps", value: latest.steps?.value, measuredAt: patternObservationTime(latest.steps, now), metric: latest.steps }
   ];
   for (const sourceValue of sourceValues) {
     if (!sourceValue.measuredAt) continue;
-    const score = patternScore(sourceValue.source, sourceValue.value);
+    const score = patternScore(sourceValue.source, sourceValue.value, sourceValue.metric);
     if (score.score <= 0) continue;
     candidates.push({
       source: sourceValue.source,
@@ -1745,10 +1768,37 @@ function patternDetailForItem(item) {
     block,
     label: blockMeta.label,
     range: blockMeta.range,
-    title: `Pattern: ${blockMeta.label}`,
-    detail: `${blockMeta.range}: possible ${move} signal - ${formatPatternReason(item)}. Consider ${patternActionForItem(item)}`,
-    basis: "Best effort from current uploads; recalculates after each upload."
+    title: "Things to watch",
+    detail: `${blockMeta.range}: possible ${move} signal - ${formatPatternReason(item)}. Easy moves: ${easyActionText(patternActionForItem(item))}`,
+    simpleDetail: `Current watchout: ${patternPlainReason(item)}. Easy moves: ${easyActionText(patternActionForItem(item))}`,
+    basis: "Best effort from current uploads; updates after each upload."
   };
+}
+
+function patternPlainReason(item = {}) {
+  const value = patternValueLabel(item);
+  const source = item.source || item.key;
+  const reason = String(item.reason || item.label || "").toLowerCase();
+  if (source === "glucose" && reason.includes("low")) return `glucose can dip${value ? ` (${value})` : ""}`;
+  if (source === "glucose") return `glucose can rise${value ? ` (${value})` : ""}`;
+  if (source === "heart_rate") return `HR can run high${value ? ` (${value})` : ""}`;
+  if (source === "hrv") return `HRV can dip${value ? ` (${value})` : ""}`;
+  if (source === "steps") return `movement can be light${value ? ` (${value})` : ""}`;
+  return formatPatternReason(item);
+}
+
+function buildPatternPlainDetail(pattern, fallback = "") {
+  if (!pattern?.label) return fallback || "No clear spike or dip yet. Easy moves: drink water; eat normally; take an easy walk.";
+  const reason = pattern.strongestReason ? patternPlainReason(pattern.strongestReason) : "";
+  const window = pattern.label ? `${pattern.label[0].toUpperCase()}${pattern.label.slice(1)}` : "This window";
+  const action = easyActionText(pattern.actionText || patternActionForItem(pattern.strongestReason || {}));
+  if (reason) {
+    const prefix = pattern.level === "high" || pattern.unstableCount >= 2
+      ? `${window} has been the least steady window.`
+      : `${window} has a possible pattern.`;
+    return `${prefix} Watch ${reason}. Easy moves: ${action}`;
+  }
+  return `${window} has the strongest pattern so far. Easy moves: ${action}`;
 }
 
 function estimateInstabilityPatterns({ readings = [], health = {}, now = new Date() } = {}) {
@@ -1761,26 +1811,26 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
 
   for (const reading of readings) {
     if (!recentEnough(reading.measuredAt)) continue;
-    addPatternObservation(stats, reading.measuredAt, "glucose", reading.valueMgDl, now);
+    addPatternObservation(stats, reading.measuredAt, "glucose", reading.valueMgDl, now, reading);
   }
 
   const trends = health?.trends || {};
   for (const metric of hourlyMetricBuckets(trends.heartRate || [], "heart_rate")) {
     if (!recentEnough(metric.measuredAt)) continue;
-    addPatternObservation(stats, metric.measuredAt, "heart_rate", metric.value, now);
+    addPatternObservation(stats, metric.measuredAt, "heart_rate", metric.value, now, metric);
   }
   for (const metric of trends.hrv || []) {
     if (!recentEnough(metric.measuredAt)) continue;
-    addPatternObservation(stats, metric.measuredAt, "hrv", metric.value, now);
+    addPatternObservation(stats, metric.measuredAt, "hrv", metric.value, now, metric);
   }
   for (const metric of trends.sleep || []) {
     if (!recentEnough(metric.measuredAt)) continue;
-    addPatternObservation(stats, metric.measuredAt, "sleep", metric.value, now);
+    addPatternObservation(stats, metric.measuredAt, "sleep", metric.value, now, metric);
   }
   for (const metric of trends.steps || []) {
     const observedAt = patternObservationTime(metric, now);
     if (!recentEnough(observedAt)) continue;
-    addPatternObservation(stats, observedAt, "steps", metric.value, now);
+    addPatternObservation(stats, observedAt, "steps", metric.value, now, metric);
   }
 
   const blocks = Array.from(stats.values()).map(summarizePatternBlock);
@@ -1795,15 +1845,20 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
   const moveLabel = patternMoveLabel(prediction?.strongestReason);
   const actionText = prediction?.actionText || (prediction?.strongestReason ? patternActionForItem(prediction.strongestReason) : "");
   const predictionDetail = prediction && conditionText
-    ? `${prediction.range}: ${totalObservations >= 6 && prediction.observations >= 2 ? "repeated" : "possible"} ${moveLabel} signal - ${conditionText}. Consider ${actionText || "water plus normal food more; easy walk more."}`
+    ? `${prediction.range}: ${totalObservations >= 6 && prediction.observations >= 2 ? "repeated" : "possible"} ${moveLabel} signal - ${conditionText}. Easy moves: ${easyActionText(actionText || "water plus normal food more; easy walk more.")}`
     : null;
   const active = Boolean(predictionDetail && totalObservations >= 6 && prediction.observations >= 2);
   const bestEffortItem = predictionDetail ? null : latestActionablePatternItem({ readings, health, now });
   const bestEffort = bestEffortItem ? patternDetailForItem(bestEffortItem) : null;
-  const fallbackDetail = "No clear spike or dip yet. Consider water plus normal food more; easy walk more.";
+  const fallbackDetail = "No clear spike or dip yet. Easy moves: drink water; eat normally; take an easy walk.";
   const predictionBasis = active
-    ? "45-day rolling window; recalculates after each upload."
-    : "Best effort from current uploads; recalculates after each upload.";
+    ? "Looks across 45 days and updates after each upload."
+    : "Best effort from current uploads; updates after each upload.";
+  const simpleDetail = prediction
+    ? buildPatternPlainDetail(prediction, fallbackDetail)
+    : (bestEffortItem
+      ? `Current watchout: ${patternPlainReason(bestEffortItem)}. Easy moves: ${easyActionText(patternActionForItem(bestEffortItem))}`
+      : fallbackDetail);
 
   return {
     status: active ? "active" : "best_effort",
@@ -1813,12 +1868,14 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
     current,
     prediction: prediction ? {
       ...prediction,
-      title: `Pattern: ${prediction.label}`,
+      title: "Things to watch",
       detail: predictionDetail,
+      simpleDetail,
       basis: predictionBasis
     } : bestEffort,
-    title: prediction ? `Pattern: ${prediction.label}` : (bestEffort?.title || "Pattern: checking"),
+    title: "Things to watch",
     detail: predictionDetail || bestEffort?.detail || fallbackDetail,
+    simpleDetail,
     basis: predictionBasis,
     blocks
   };
@@ -1827,6 +1884,86 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
 function pushFactor(factors, key, label, points, reason, action) {
   if (!Number.isFinite(points) || points === 0) return;
   factors.push({ key, label, points: Number(points.toFixed(2)), reason, action });
+}
+
+function conditionLevel(score) {
+  if (!Number.isFinite(Number(score))) return "Waiting for enough data.";
+  if (score <= 3.5) return "Looks steady.";
+  if (score <= 5.5) return "Slightly elevated.";
+  if (score <= 7.5) return "Elevated.";
+  return "High.";
+}
+
+function glucoseConditionText(glucose, dynamics = []) {
+  const value = Number(glucose?.valueMgDl ?? glucose?.value);
+  if (!Number.isFinite(value)) return "";
+  const glucoseMove = dynamics.find((factor) => factor?.source === "glucose");
+  if (glucoseMove?.reason) {
+    return `${glucoseMove.reason.replace(/\.$/, "")}, so glucose is the main thing to watch.`;
+  }
+  if (value < 70) return `${Math.round(value)} mg/dL glucose is low.`;
+  if (value > 180) return `${Math.round(value)} mg/dL glucose is high.`;
+  if (value < 82) return `${Math.round(value)} mg/dL glucose is near the low edge.`;
+  if (value > 140) return `${Math.round(value)} mg/dL glucose is near the high edge.`;
+  return `${Math.round(value)} mg/dL glucose is steady.`;
+}
+
+function heartRateConditionText(heartRate) {
+  const value = Number(heartRate?.value);
+  if (!Number.isFinite(value)) return "";
+  if (value >= 100) return `${Math.round(value)} bpm HR is high.`;
+  if (value >= 85) return `${Math.round(value)} bpm HR is raised.`;
+  if (value >= 55 && value <= 75) return `${Math.round(value)} bpm HR is calm.`;
+  return `${Math.round(value)} bpm HR is in range for this read.`;
+}
+
+function hrvConditionText(hrv, dynamics = []) {
+  if (!hrv?.value) return "";
+  const hrvMove = dynamics.find((factor) => factor?.source === "hrv");
+  if (hrvMove?.reason) return `${hrvMove.reason.replace(/\.$/, "")}; watch recovery trend.`;
+  if (isEstimatedHrvMetric(hrv)) return "Estimated HRV looks normal for this Blood estimate.";
+  const value = Number(hrv.value);
+  if (value < 40) return `${Math.round(value)} ms HRV is low.`;
+  if (value >= 65) return `${Math.round(value)} ms HRV is strong.`;
+  return `${Math.round(value)} ms HRV is in range for this read.`;
+}
+
+function stepsConditionText(recentSteps) {
+  const value = Number(recentSteps);
+  if (!Number.isFinite(value)) return "";
+  const label = Math.round(value).toLocaleString("en-US");
+  if (value < 4000) return `${label} steps so far today is light.`;
+  if (value >= 8000) return `${label} steps today is solid.`;
+  return `${label} steps today is moderate.`;
+}
+
+function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, dynamics = [], factors = [] } = {}) {
+  const headline = conditionLevel(score);
+  const pieces = [
+    glucoseConditionText(glucose, dynamics),
+    heartRateConditionText(heartRate),
+    hrvConditionText(hrv, dynamics),
+    stepsConditionText(recentSteps)
+  ].filter(Boolean);
+  const positiveFactors = factors
+    .filter((factor) => factor?.key !== "sleep" && Number(factor.points) > 0)
+    .filter((factor) => !(factor.key === "hrv" && /estimated HRV (is )?(too )?low/i.test(factor.reason || "")))
+    .sort((a, b) => Number(b.points) - Number(a.points));
+  const actionSource = positiveFactors[0] || dynamics[0] || null;
+  const action = easyActionText(actionSource?.action || "Water plus normal food more; easy walk more.");
+  const watchouts = positiveFactors
+    .slice(0, 2)
+    .map((factor) => String(factor.reason || factor.label || "").replace(/ is too /g, " is ").replace(/\.$/, ""))
+    .filter(Boolean);
+  return {
+    label: "Overall condition",
+    headline,
+    summary: `${headline} ${pieces.slice(0, 4).join(" ")}`.trim(),
+    watch: watchouts.length
+      ? `Watch ${watchouts.join(" and ")}. Easy moves: ${action}`
+      : `No strong action signal from current glucose, HR, HRV trend, or steps. Easy moves: ${action}`,
+    source: actionSource?.key || actionSource?.source || "none"
+  };
 }
 
 function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour, referenceAt = null, dynamics = [] } = {}) {
@@ -1870,9 +2007,12 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
   if (hrv?.value) {
     const value = hrv.value;
     const labelPrefix = hrv.estimated || hrv.derived ? "estimated HRV" : "HRV";
-    if (value < 25) {
+    if (isEstimatedHrvMetric(hrv)) {
+      // The proxy is derived from heart-rate samples, so the absolute value is not
+      // treated like a true RMSSD threshold. Fast drops still enter via dynamics.
+    } else if (value < 25) {
       raw += 0.8;
-      pushFactor(factors, "hrv", `${labelPrefix} too low`, 0.8, `${value} ms ${labelPrefix} is too low.`, "Water more; protein/fiber meal rhythm more; gentle walk more.");
+      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Water more; protein/fiber meal rhythm more; gentle walk more.");
     } else if (value < 40) {
       raw += 0.45;
       pushFactor(factors, "hrv", `${labelPrefix} low`, 0.45, `${value} ms ${labelPrefix} is low.`, "Water more; protein/fiber meal rhythm more; gentle walk more.");
@@ -1901,10 +2041,10 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
   if (Number.isFinite(recentSteps)) {
     if (recentSteps < 1500) {
       raw += 0.35;
-      pushFactor(factors, "steps", "steps too low", 0.35, `${recentSteps} steps in the recent window is too low.`, "Water more; normal meals more; short walks more.");
+      pushFactor(factors, "steps", "steps too low", 0.35, `${recentSteps} steps in the recent window is too low.`, "Water more; normal meals more; easy walk more.");
     } else if (recentSteps < 4000) {
       raw += 0.15;
-      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Water more; normal meals more; short walks more.");
+      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Water more; normal meals more; easy walk more.");
     } else if (recentSteps >= 8000) {
       raw -= 0.25;
       pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Water after movement more; steady movement more.");
@@ -1931,17 +2071,26 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     || null;
   const suggestion = primary
     ? {
-      label: "Latest upload",
+      label: "Overall condition",
       action: primary.action,
       reason: primary.reason,
       source: primary.key
     }
     : {
-      label: "Latest upload",
+      label: "Overall condition",
       action: "Water plus normal food more; easy walk more.",
       reason: "No current glucose, HR, HRV, or step source needs action.",
       source: "none"
     };
+  const condition = buildConditionSummary({
+    score,
+    glucose,
+    heartRate,
+    hrv,
+    recentSteps,
+    dynamics: dynamicFactors,
+    factors
+  });
 
   return {
     score,
@@ -1951,7 +2100,8 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     factors,
     dynamics: dynamicFactors,
     suggestion,
-    note: "Personal stabilization estimate from latest uploaded health signals; not a diagnosis."
+    condition,
+    note: "Source-bounded personal health read, not diagnosis."
   };
 }
 

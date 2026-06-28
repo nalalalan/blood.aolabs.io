@@ -205,7 +205,7 @@ h2 {
 .surface-head p,
 .sync-section p,
 .import-section p,
-.latest-strip span,
+.readings-head small,
 .chart-note,
 .section-head span {
   color: var(--muted);
@@ -273,67 +273,41 @@ h2 {
   opacity: .68;
 }
 
-.latest-strip {
+.readings-head {
   display: grid;
-  grid-template-columns: minmax(128px, .74fr) minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: 16px;
-  margin: 0;
-  padding: 14px;
-  border: 1px solid rgba(159, 48, 65, .18);
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(159, 48, 65, .08), rgba(73, 123, 120, .05));
-}
-
-.latest-strip.is-boundary {
-  grid-template-columns: minmax(150px, .8fr) minmax(0, 1.3fr) minmax(0, 1fr);
-}
-
-.latest-strip > div {
+  align-content: center;
+  gap: 6px;
   min-width: 0;
+  padding: 14px 16px;
+  border-right: 1px solid rgba(73, 55, 51, .1);
 }
 
-.latest-strip strong,
-.latest-strip span,
-.latest-strip small {
+.readings-head span,
+.readings-head strong,
+.readings-head small {
   display: block;
 }
 
-.latest-value {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  color: var(--blood-dark);
+.readings-head span {
+  color: #5d514e;
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.05;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.latest-strip .latest-value span {
-  color: inherit;
-  font-size: clamp(34px, 7vw, 80px);
-  line-height: .86;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.latest-strip.is-boundary .latest-value span {
-  font-size: clamp(28px, 4vw, 42px);
-  line-height: 1;
-}
-
-.latest-value small {
-  font-size: 15px;
-  font-weight: 760;
-}
-
-.latest-strip strong {
-  margin-top: 8px;
-  font-size: 21px;
-  line-height: 1.08;
+.readings-head strong {
+  color: var(--ink);
+  font-size: 19px;
+  line-height: 1.12;
   font-weight: 780;
 }
 
-.latest-strip span {
-  margin-top: 5px;
+.readings-head small {
   font-size: 13px;
-  font-weight: 650;
+  line-height: 1.25;
+  font-weight: 680;
 }
 
 .anxiety-strip {
@@ -350,10 +324,14 @@ h2 {
 
 .health-strip {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
-  gap: 12px;
+  grid-template-columns: minmax(190px, .42fr) minmax(0, 1.58fr);
+  gap: 0;
   align-items: stretch;
   margin: 16px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
 }
 
 .anxiety-readout,
@@ -417,7 +395,7 @@ h2 {
 }
 
 .health-suggestion small {
-  display: none;
+  display: block;
 }
 
 .health-metrics {
@@ -463,8 +441,8 @@ h2 {
 
 .health-suggestion span {
   color: var(--ink);
-  font-size: 16px;
-  line-height: 1.25;
+  font-size: 15px;
+  line-height: 1.32;
   font-weight: 760;
 }
 
@@ -479,7 +457,7 @@ h2 {
 .pattern-card span {
   color: var(--ink);
   font-size: 15px;
-  line-height: 1.25;
+  line-height: 1.32;
   font-weight: 760;
 }
 
@@ -1032,17 +1010,9 @@ tbody tr:last-child td {
     margin-top: 14px;
   }
 
-  .latest-strip {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .latest-strip.is-boundary {
-    grid-template-columns: 1fr;
-  }
-
-  .latest-strip strong {
-    margin-top: 0;
+  .readings-head {
+    border-right: 0;
+    border-bottom: 1px solid rgba(73, 55, 51, .1);
   }
 
   .anxiety-strip,

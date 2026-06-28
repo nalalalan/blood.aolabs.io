@@ -1,4 +1,4 @@
-const CACHE_NAME = "blood-aolabs-20260628-dynamic-pattern-v1";
+const CACHE_NAME = "blood-aolabs-20260628-overall-condition-v1";
 const ASSETS = [
   "./",
   "./index.html",
