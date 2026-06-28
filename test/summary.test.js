@@ -209,6 +209,33 @@ test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
   assert.doesNotMatch(anxiety.suggestion.action, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
+test("stale sleep does not drive the current anxiety action", () => {
+  const anxiety = estimateAnxietyState({
+    glucose: { valueMgDl: 104 },
+    heartRate: { value: 68 },
+    hrv: { value: 70 },
+    sleep: { asleepMinutes: 240, measuredAt: "2026-06-25T08:00:00.000Z" },
+    recentSteps: 9000,
+    referenceAt: "2026-06-28T12:00:00.000Z"
+  });
+
+  assert.equal(anxiety.factors.some((factor) => factor.key === "sleep"), false);
+  assert.notEqual(anxiety.suggestion.source, "sleep");
+  assert.ok(anxiety.score < 4);
+  assert.doesNotMatch(`${anxiety.suggestion.reason} ${anxiety.suggestion.action}`, /sleep|asleep|too short|short/i);
+});
+
+test("fresh sleep can affect the score but never becomes the visible recommendation", () => {
+  const anxiety = estimateAnxietyState({
+    sleep: { asleepMinutes: 240, measuredAt: "2026-06-28T08:00:00.000Z" },
+    referenceAt: "2026-06-28T12:00:00.000Z"
+  });
+
+  assert.equal(anxiety.factors.some((factor) => factor.key === "sleep"), true);
+  assert.equal(anxiety.suggestion.source, "none");
+  assert.doesNotMatch(`${anxiety.suggestion.reason} ${anxiety.suggestion.action}`, /sleep|asleep|too short|short/i);
+});
+
 test("blood recommendation actions stay positive and inside food water or movement", () => {
   const banned = /phone|screen|breath|exhale|task|focus|work|commitment|switch|reset|drift|open|\bless\b|avoid|restrict|reduce|stop|sitting|intensity|skipped/i;
   const allowed = /carb|protein|fiber|food|meal|snack|drink|water|walk|movement|exercise/i;
@@ -285,8 +312,33 @@ test("instability patterns identify the strongest source-backed time block", () 
   assert.match(patterns.prediction.detail, /glucose|HR|HRV/);
   assert.match(patterns.prediction.detail, /too high|too low|near high|raised|light|short/);
   assert.match(patterns.prediction.detail, /mg\/dL|bpm|ms|h|steps/);
+  assert.doesNotMatch(patterns.prediction.detail, /sleep|asleep/i);
   assert.doesNotMatch(patterns.prediction.detail, /flagged|outlier|source samples|read high, low, short, light, or raised/i);
   assert.match(patterns.prediction.basis, /recalculates after each upload/);
+});
+
+test("sleep-only history stays off the visible pattern recommendation", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T12:00:00.000Z",
+    sleepSessions: [
+      { startTime: "2026-06-25T03:00:00.000Z", endTime: "2026-06-25T07:00:00.000Z", stages: [] },
+      { startTime: "2026-06-26T03:00:00.000Z", endTime: "2026-06-26T07:30:00.000Z", stages: [] },
+      { startTime: "2026-06-27T03:00:00.000Z", endTime: "2026-06-27T07:20:00.000Z", stages: [] },
+      { startTime: "2026-06-28T03:00:00.000Z", endTime: "2026-06-28T07:10:00.000Z", stages: [] },
+      { startTime: "2026-06-24T03:00:00.000Z", endTime: "2026-06-24T07:40:00.000Z", stages: [] },
+      { startTime: "2026-06-23T03:00:00.000Z", endTime: "2026-06-23T07:50:00.000Z", stages: [] }
+    ]
+  });
+  const health = summarizeHealthMetrics(metrics, null, null, new Date("2026-06-28T12:00:00.000Z"));
+  const patterns = estimateInstabilityPatterns({
+    readings: [],
+    health,
+    now: new Date("2026-06-28T12:00:00.000Z")
+  });
+
+  assert.equal(patterns.status, "learning");
+  assert.doesNotMatch(`${patterns.detail} ${patterns.prediction?.detail || ""}`, /sleep|asleep|too short|short/i);
 });
 
 test("anxiety trend reconstructs historical score points from glucose and health samples", () => {

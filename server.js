@@ -1203,6 +1203,27 @@ function recencyWeight(measuredAt, now = new Date()) {
   return Math.max(0.55, 1 - (Math.min(ageDays, 45) / 45) * 0.45);
 }
 
+const ACTIONABLE_PATTERN_SOURCES = new Set(["glucose", "heart_rate", "hrv", "steps"]);
+const SLEEP_ACTION_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+
+function sourceTimeMs(metric) {
+  const candidates = [metric?.measuredAt, metric?.endTime, metric?.date];
+  for (const candidate of candidates) {
+    const time = new Date(candidate).getTime();
+    if (Number.isFinite(time)) return time;
+  }
+  return null;
+}
+
+function metricFreshForAction(metric, referenceAt, maxAgeMs = SLEEP_ACTION_MAX_AGE_MS) {
+  if (!metric) return false;
+  if (!referenceAt) return true;
+  const referenceTime = new Date(referenceAt).getTime();
+  const measuredTime = sourceTimeMs(metric);
+  if (!Number.isFinite(referenceTime) || !Number.isFinite(measuredTime)) return true;
+  return referenceTime - measuredTime <= maxAgeMs && measuredTime <= referenceTime + 60_000;
+}
+
 function patternScore(source, value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return { score: 0, reason: "" };
@@ -1228,8 +1249,8 @@ function patternScore(source, value) {
   }
 
   if (source === "sleep") {
-    if (number < 300) return { score: 0.9, reason: "sleep too short" };
-    if (number < 360) return { score: 0.45, reason: "sleep light" };
+    if (number < 300) return { score: 0.9, reason: "sleep history low" };
+    if (number < 360) return { score: 0.45, reason: "sleep history light" };
     return { score: 0, reason: "" };
   }
 
@@ -1329,6 +1350,7 @@ function summarizePatternReasons(reasons = []) {
   const buckets = new Map();
   for (const item of reasons) {
     if (!item?.reason) continue;
+    if (!ACTIONABLE_PATTERN_SOURCES.has(item.source)) continue;
     const current = buckets.get(item.reason) || { reason: item.reason, count: 0, scoreTotal: 0, latestTime: 0, strongest: item };
     current.count += 1;
     current.scoreTotal += Number(item.score) || 0;
@@ -1354,6 +1376,10 @@ function summarizePatternBlock(block) {
     .sort((a, b) => b[1] - a[1])
     .map(([source, count]) => ({ source, label: PATTERN_SOURCE_LABELS[source] || source, count }));
   const topSources = sourceEntries.slice(0, 3).map((source) => source.label);
+  const actionableTopSources = sourceEntries
+    .filter((source) => ACTIONABLE_PATTERN_SOURCES.has(source.source))
+    .slice(0, 3)
+    .map((source) => source.label);
   const level = averageScore >= 0.45 || unstableShare >= 0.42
     ? "high"
     : averageScore >= 0.25 || unstableShare >= 0.25
@@ -1372,8 +1398,10 @@ function summarizePatternBlock(block) {
     unstableShare: Number(unstableShare.toFixed(2)),
     sources: sourceEntries,
     topSources,
+    actionableTopSources,
     conditionText: summarizePatternReasons(block.reasons),
     reasons: block.reasons
+      .filter((reason) => ACTIONABLE_PATTERN_SOURCES.has(reason.source))
       .sort((a, b) => b.score - a.score || new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
       .slice(0, 4)
   };
@@ -1418,11 +1446,11 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
   const prediction = ranked.find((block) => block.unstableCount > 0) || null;
   const currentBlockKey = currentTimeBlock(easternHour(now));
   const current = blocks.find((block) => block.block === currentBlockKey) || null;
-  const active = Boolean(prediction && totalObservations >= 6);
-  const conditionText = prediction?.conditionText || compactJoin(prediction?.topSources || []) || "source state moved";
-  const predictionDetail = prediction
+  const conditionText = prediction?.conditionText || compactJoin(prediction?.actionableTopSources || []);
+  const predictionDetail = prediction && conditionText
     ? `${prediction.range}: ${conditionText}.`
     : null;
+  const active = Boolean(predictionDetail && totalObservations >= 6);
   const predictionBasis = prediction
     ? "45-day rolling window; recalculates after each upload."
     : `${totalObservations} source samples so far; recalculates after each upload.`;
@@ -1442,7 +1470,7 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
     title: active ? `Unstable window: ${prediction.label}` : "Pattern: learning",
     detail: active
       ? predictionDetail
-      : "Need more time-stamped glucose and health samples.",
+      : "Need more time-stamped glucose, HR, HRV, and step samples.",
     basis: predictionBasis,
     blocks
   };
@@ -1453,7 +1481,7 @@ function pushFactor(factors, key, label, points, reason, action) {
   factors.push({ key, label, points: Number(points.toFixed(2)), reason, action });
 }
 
-function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour } = {}) {
+function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour, referenceAt = null } = {}) {
   const factors = [];
   let raw = 2.2;
 
@@ -1506,18 +1534,19 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     }
   }
 
-  if (sleep?.asleepMinutes || sleep?.value) {
-    const minutes = Number(sleep.asleepMinutes ?? sleep.value);
+  const sleepForAction = metricFreshForAction(sleep, referenceAt) ? sleep : null;
+  if (sleepForAction?.asleepMinutes || sleepForAction?.value) {
+    const minutes = Number(sleepForAction.asleepMinutes ?? sleepForAction.value);
     const hours = minutes / 60;
     if (minutes < 300) {
       raw += 0.9;
-      pushFactor(factors, "sleep", "sleep too short", 0.9, `${hours.toFixed(1)}h asleep is too short.`, "Protein/fiber with first meal more; water more; easy movement more.");
+      pushFactor(factors, "sleep", "sleep recovery low", 0.9, `${hours.toFixed(1)}h sleep recovery is low.`, "Protein/fiber with first meal more; water more; easy movement more.");
     } else if (minutes < 360) {
       raw += 0.45;
-      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Protein/fiber with first meal more; water more; easy movement more.");
+      pushFactor(factors, "sleep", "sleep recovery light", 0.45, `${hours.toFixed(1)}h sleep recovery is light.`, "Protein/fiber with first meal more; water more; easy movement more.");
     } else if (minutes >= 420) {
       raw -= 0.25;
-      pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "Normal exercise more; water more.");
+      pushFactor(factors, "sleep", "sleep recovery solid", -0.25, `${hours.toFixed(1)}h sleep recovery is solid.`, "Normal exercise more; water more.");
     }
   }
 
@@ -1535,7 +1564,10 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
   }
 
   const score = Number(Math.max(1, Math.min(10, raw * 2)).toFixed(1));
-  const primary = [...factors].sort((a, b) => b.points - a.points)[0] || null;
+  const actionableFactors = factors.filter((factor) => factor.key !== "sleep");
+  const primary = actionableFactors.filter((factor) => factor.points > 0).sort((a, b) => b.points - a.points)[0]
+    || actionableFactors.sort((a, b) => b.points - a.points)[0]
+    || null;
   const suggestion = primary
     ? {
       label: "Latest upload",
@@ -1546,7 +1578,7 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     : {
       label: "Latest upload",
       action: "Water plus normal food more; easy walk more.",
-      reason: "No high, low, short, light, or raised source is available.",
+      reason: "No current glucose, HR, HRV, or step source needs action.",
       source: "none"
     };
 
@@ -1657,7 +1689,7 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
       latest.glucose?.measuredAt,
       latest.heartRate?.measuredAt,
       latest.hrv?.measuredAt,
-      latest.sleep?.measuredAt,
+      health?.scoreInputs?.sleep?.measuredAt,
       latest.steps?.measuredAt,
       glucosePoints.at(-1)?.measuredAt
     ]
@@ -1671,7 +1703,7 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
         latest.glucose,
         latest.heartRate,
         latest.hrv,
-        latest.sleep,
+        health?.scoreInputs?.sleep,
         Number.isFinite(Number(latest.steps?.value)) ? latest.steps : null
       ].filter(Boolean).length;
       points.push({
@@ -1690,7 +1722,16 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
   return points.slice(-limit);
 }
 
-function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucose = null) {
+function latestSourceEndpoint(...values) {
+  const latest = values
+    .flat()
+    .map((value) => new Date(value).getTime())
+    .filter((time) => Number.isFinite(time))
+    .sort((a, b) => b - a)[0];
+  return Number.isFinite(latest) ? new Date(latest).toISOString() : null;
+}
+
+function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucose = null, now = new Date()) {
   const normalized = metrics
     .filter((metric) => metric?.type && metric?.measuredAt)
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
@@ -1705,6 +1746,19 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     .filter(Boolean)
     .sort()
     .at(-1) || sleep?.capturedAt || null;
+  const referenceAt = latestSourceEndpoint(
+    now,
+    latestGlucose?.capturedAt,
+    latestGlucose?.measuredAt,
+    heartRate?.capturedAt,
+    heartRate?.measuredAt,
+    hrv?.capturedAt,
+    hrv?.measuredAt,
+    latestStepsMetric?.capturedAt,
+    latestStepsMetric?.measuredAt,
+    lastCapturedAt
+  );
+  const sleepForScore = metricFreshForAction(sleep, referenceAt) ? sleep : null;
 
   const latest = {
     glucose: latestGlucose,
@@ -1737,12 +1791,16 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
       sleepAvg14dMinutes: metricAverage(normalized, "sleep", 14),
       stepsAvg14d: metricAverage(normalized, "steps", 14)
     },
+    scoreInputs: {
+      sleep: sleepForScore
+    },
     anxiety: estimateAnxietyState({
       glucose: latestGlucose,
       heartRate,
       hrv,
-      sleep,
-      recentSteps
+      sleep: sleepForScore,
+      recentSteps,
+      referenceAt
     })
   };
 }
