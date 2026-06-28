@@ -19,8 +19,9 @@ Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io
 Current bridge/UI boundary:
 
 - Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
-- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect; Blood now shows the sample time next to the chart value.
+- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood now shows both the phone-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
 - True HRV is current only when Health Connect exposes RMSSD HRV records. Without that source, Blood uses the labeled sleep/rest HR estimate and shows its estimate timestamp.
+- A direct Samsung Health current-feed path would require the proprietary Samsung Health Data SDK or a separate watch sensor bridge; the current Blood Bridge reads the Health Connect copy.
 
 Anxiety score source function: `server.js::estimateAnxietyState`.
 

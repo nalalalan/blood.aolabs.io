@@ -37,7 +37,7 @@
 
     <article class="paper-doc">
       <h2>Abstract</h2>
-      <p>Blood turns automatic CONTOUR NEXT ONE glucose readings and Health Connect heart rate, HRV, sleep, and steps into one visible stabilization score followed by five aligned graphs. The anxiety estimate is not a diagnosis. It starts from a fixed raw baseline, adds or subtracts current source factors, scales the result to one decimal on a 1-10 range, and selects a stabilizing action from the strongest current outlier.</p>
+      <p>Blood turns automatic CONTOUR NEXT ONE glucose readings and Samsung/Health Connect heart rate, HRV, sleep, and steps into one visible stabilization score followed by five aligned graphs. The anxiety estimate is not a diagnosis. It starts from a fixed raw baseline, adds or subtracts current source factors, scales the result to one decimal on a 1-10 range, and selects a stabilizing action from the strongest current outlier.</p>
 
       <h2>Current formula</h2>
       <p>Raw starts at 2.2. Stable glucose, calm heart rate, solid sleep, and high recent steps subtract from the score. Low glucose, high glucose, high heart rate, low HRV, short sleep, and low movement add to it. The visible score is <code>clamp(1, 10, raw * 2)</code>, rounded to one decimal place.</p>
@@ -49,7 +49,7 @@
       <p>Blood names the current time block and gives one direct more/less adjustment from the strongest current outlier.</p>
 
       <h2>Boundary</h2>
-      <p>Heart rate is current only when the watch or phone writes current samples into Health Connect, so Blood shows the source sample time beside the chart value. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from dense low-noise sleep/rest heart-rate windows and labels the result as estimated. This paper is a system record, not medical advice.</p>
+      <p>Heart rate is current only when the phone bridge uploads and Samsung/Health Connect exposes current samples, so Blood shows both the phone-upload time and source sample time. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from dense low-noise sleep/rest heart-rate windows and labels the result as estimated. This paper is a system record, not medical advice.</p>
     </article>
   </main>
 </body>

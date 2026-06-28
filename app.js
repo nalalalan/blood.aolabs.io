@@ -1,4 +1,5 @@
 const syncLine = document.getElementById("sync-line");
+const freshnessLine = document.getElementById("freshness-line");
 const refreshButton = document.getElementById("refresh-button");
 const latestValue = document.getElementById("latest-value");
 const latestUnit = document.getElementById("latest-unit");
@@ -52,6 +53,56 @@ function formatDateTime(value) {
     hour: "numeric",
     minute: "2-digit"
   });
+}
+
+function timeMs(value) {
+  const date = new Date(value);
+  const ms = date.getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function minutesBetween(later, earlier) {
+  const laterMs = timeMs(later);
+  const earlierMs = timeMs(earlier);
+  if (laterMs == null || earlierMs == null) return null;
+  return Math.round((laterMs - earlierMs) / 60_000);
+}
+
+function sourceFreshnessText(data) {
+  const health = data?.health || {};
+  const latest = health.latest || {};
+  const generatedAt = data?.generatedAt || new Date().toISOString();
+  const uploadAt = health.lastCapturedAt || data?.lastCapturedAt || "";
+  const heartRateAt = latest.heartRate?.measuredAt || "";
+  const hrv = latest.hrv || null;
+  const uploadAge = minutesBetween(generatedAt, uploadAt);
+  const heartRateGap = minutesBetween(uploadAt, heartRateAt);
+  const parts = [];
+
+  if (!uploadAt) {
+    parts.push("No phone upload reached Blood yet.");
+  } else if (uploadAge != null && uploadAge > 45) {
+    parts.push(`Phone upload stale: ${formatDateTime(uploadAt)}.`);
+  } else {
+    parts.push(`Phone upload ${formatDateTime(uploadAt)}.`);
+  }
+
+  if (!heartRateAt) {
+    parts.push("No HR sample reached Blood.");
+  } else if (heartRateGap != null && heartRateGap > 30) {
+    parts.push(`Samsung/Health Connect HR shared through ${formatDateTime(heartRateAt)}.`);
+  } else {
+    parts.push(`HR shared ${formatDateTime(heartRateAt)}.`);
+  }
+
+  if (hrv?.measuredAt) {
+    const hrvSource = hrv.estimated || hrv.derived ? hrvBasisLabel(hrv) : "source RMSSD";
+    parts.push(`HRV: ${hrvSource} ${formatDateTime(hrv.measuredAt)}.`);
+  } else {
+    parts.push("No HRV source reached Blood.");
+  }
+
+  return parts.join(" ");
 }
 
 function metricStamp(metric, field = "measuredAt") {
@@ -451,6 +502,9 @@ function renderHealth(data) {
     const label = anxiety.label ? `Estimate: ${anxiety.label}.` : "Waiting for full metrics.";
     const captured = health.lastCapturedAt ? ` Metrics upload ${formatDateTime(health.lastCapturedAt)}.` : "";
     anxietyLabel.textContent = `${label}${captured}`;
+  }
+  if (freshnessLine) {
+    freshnessLine.textContent = sourceFreshnessText(data);
   }
 
   setMetricValue(metricGlucose, glucose?.valueMgDl ? `${glucose.valueMgDl} mg/dL` : "");

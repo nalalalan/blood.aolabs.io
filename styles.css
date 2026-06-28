@@ -215,6 +215,14 @@ h2 {
   font-weight: 560;
 }
 
+.surface-head .freshness-line {
+  max-width: 840px;
+  margin-top: 5px;
+  color: var(--blood-dark);
+  font-size: 13px;
+  font-weight: 740;
+}
+
 #refresh-button,
 .range-controls button,
 .download-link,

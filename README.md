@@ -48,7 +48,7 @@ Health Connect metrics:
 3. Confirm the phone has sources for heart rate, steps, sleep, and HRV if a true RMSSD source is available.
 4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
 
-HR should stay current when the watch or phone writes current heart-rate samples into Health Connect. Blood shows the source time beside the chart value so a recent upload cannot hide a stale wearable sample. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples and waits if the sample set is too thin or too noisy.
+HR should stay current when the watch or phone writes current heart-rate samples into Health Connect and the bridge uploads them. Blood now separates those two freshness states on the page: phone upload time, and the latest Samsung/Health Connect HR sample time. If Samsung Health is visibly newer than Blood while Blood shows an older HR source time, the shared Health Connect copy is stale or delayed; Blood is not reading Samsung Health's private app store directly. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples and waits if the sample set is too thin or too noisy. A truly live watch feed requires a separate Samsung SDK or watch-sensor bridge rather than the current Health Connect phone bridge.
 
 ## Local
 

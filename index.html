@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg?v=20260627-suite-drop">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260627-accurate-hrv-score-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260627-source-freshness-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -59,6 +59,7 @@
         <div>
           <h1 id="blood-title">Blood</h1>
           <p id="sync-line">Loading automatic records.</p>
+          <p id="freshness-line" class="freshness-line">Checking phone and Samsung Health source freshness.</p>
         </div>
         <button id="refresh-button" type="button">Refresh</button>
       </div>
@@ -164,7 +165,7 @@
     <section class="sync-section" id="sync" aria-labelledby="sync-title">
       <div>
         <h2 id="sync-title">Phone bridge</h2>
-        <p>Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, sleep, and steps; Blood estimates HRV from sleep/rest HR when source HRV is unavailable.</p>
+        <p>Automatic path: CONTOUR NEXT ONE glucose over Bluetooth plus Samsung/Health Connect HR, sleep, and steps. If Samsung Health is newer than Blood, the shared source has not exposed the newer sample yet.</p>
         <a class="download-link" href="./downloads/blood-bridge.apk" download>Download Blood Bridge APK</a>
       </div>
       <div class="sync-steps" aria-label="sync setup">
@@ -229,6 +230,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=20260627-accurate-hrv-score-v1" defer></script>
+  <script src="./app.js?v=20260627-source-freshness-v1" defer></script>
 </body>
 </html>
