@@ -1127,16 +1127,16 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const value = glucose.valueMgDl;
     if (value < 70) {
       raw += 1.0;
-      pushFactor(factors, "glucose", "glucose low", 1.0, `${value} mg/dL is below range.`, "Carb plus protein now more; hard exercise less.");
+      pushFactor(factors, "glucose", "glucose low", 1.0, `${value} mg/dL is below range.`, "Carb plus protein now more; water more.");
     } else if (value > 180) {
       raw += 0.9;
-      pushFactor(factors, "glucose", "glucose high", 0.9, `${value} mg/dL is above range.`, "Easy 10-minute walk more; extra sugar less.");
+      pushFactor(factors, "glucose", "glucose high", 0.9, `${value} mg/dL is above range.`, "Easy 10-minute walk more; water more.");
     } else if (value < 82 || value > 140) {
       raw += 0.35;
-      pushFactor(factors, "glucose", "glucose edge", 0.35, `${value} mg/dL is near the edge of the target band.`, "Protein or fiber with the next food more; sugary drinks less.");
+      pushFactor(factors, "glucose", "glucose edge", 0.35, `${value} mg/dL is near the edge of the target band.`, "Protein or fiber with the next food more; water more.");
     } else {
       raw -= 0.15;
-      pushFactor(factors, "glucose", "glucose stable", -0.15, `${value} mg/dL is inside the target band.`, "Normal meal rhythm more; random snacks less.");
+      pushFactor(factors, "glucose", "glucose stable", -0.15, `${value} mg/dL is inside the target band.`, "Normal meal rhythm more; water more.");
     }
   }
 
@@ -1144,13 +1144,13 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const value = heartRate.value;
     if (value >= 100) {
       raw += 0.85;
-      pushFactor(factors, "heart_rate", "HR high", 0.85, `${value} bpm is elevated.`, "Water plus light movement more; hard exercise less.");
+      pushFactor(factors, "heart_rate", "HR high", 0.85, `${value} bpm is elevated.`, "Water plus light movement more.");
     } else if (value >= 85) {
       raw += 0.4;
-      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm is raised.`, "Water plus easy walk more; sitting still less.");
+      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm is raised.`, "Water plus easy walk more.");
     } else if (value >= 55 && value <= 75) {
       raw -= 0.15;
-      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm is calm.`, "Normal exercise more; skipped water less.");
+      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm is calm.`, "Normal exercise more; water more.");
     }
   }
 
@@ -1159,13 +1159,13 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const labelPrefix = hrv.estimated || hrv.derived ? "estimated HRV" : "HRV";
     if (value < 25) {
       raw += 0.8;
-      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Water plus small food more; sitting still less.");
+      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Water plus small food more; gentle walk more.");
     } else if (value < 40) {
       raw += 0.45;
-      pushFactor(factors, "hrv", `${labelPrefix} soft`, 0.45, `${value} ms ${labelPrefix} is soft.`, "Water plus gentle walk more; hard exercise less.");
+      pushFactor(factors, "hrv", `${labelPrefix} soft`, 0.45, `${value} ms ${labelPrefix} is soft.`, "Water plus gentle walk more.");
     } else if (value >= 65) {
       raw -= 0.25;
-      pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Normal exercise more; sugary drinks less.");
+      pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Normal exercise more; water more.");
     }
   }
 
@@ -1174,26 +1174,26 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const hours = minutes / 60;
     if (minutes < 300) {
       raw += 0.9;
-      pushFactor(factors, "sleep", "sleep short", 0.9, `${hours.toFixed(1)}h asleep is short.`, "Water plus simple food more; hard exercise less.");
+      pushFactor(factors, "sleep", "sleep short", 0.9, `${hours.toFixed(1)}h asleep is short.`, "Water plus simple food more; gentle walk more.");
     } else if (minutes < 360) {
       raw += 0.45;
-      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Water plus easy movement more; skipped meals less.");
+      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Water plus easy movement more; normal meal rhythm more.");
     } else if (minutes >= 420) {
       raw -= 0.25;
-      pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "Normal exercise more; skipped water less.");
+      pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "Normal exercise more; water more.");
     }
   }
 
   if (Number.isFinite(recentSteps)) {
     if (recentSteps < 1500) {
       raw += 0.35;
-      pushFactor(factors, "steps", "steps low", 0.35, `${recentSteps} steps in the recent window is low.`, "Short walk more; sitting still less.");
+      pushFactor(factors, "steps", "steps low", 0.35, `${recentSteps} steps in the recent window is low.`, "Short walk more; water more.");
     } else if (recentSteps < 4000) {
       raw += 0.15;
-      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Short walks more; sitting still less.");
+      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Short walks more; water more.");
     } else if (recentSteps >= 8000) {
       raw -= 0.25;
-      pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Water after movement more; extra intensity less.");
+      pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Water after movement more; steady movement more.");
     }
   }
 
@@ -1209,7 +1209,7 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     }
     : {
       time,
-      action: "Water plus normal food more; sitting still less.",
+      action: "Water plus normal food more; easy walk more.",
       reason: "No current outlier is available.",
       source: "none"
     };

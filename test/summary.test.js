@@ -150,7 +150,7 @@ test("prefers source HRV over calculated HRV for the same date", () => {
   assert.equal(health.latest.hrv.basis, "health_connect_rmssd");
 });
 
-test("anxiety suggestion uses current block and one more-less action", () => {
+test("anxiety suggestion uses current block and one positive action", () => {
   assert.equal(currentTimeBlock(17), "afternoon");
   const anxiety = estimateAnxietyState({
     glucose: { valueMgDl: 112 },
@@ -163,8 +163,9 @@ test("anxiety suggestion uses current block and one more-less action", () => {
 
   assert.equal(anxiety.suggestion.time, "afternoon");
   assert.equal(anxiety.suggestion.source, "heart_rate");
-  assert.equal(anxiety.suggestion.action, "Water plus light movement more; hard exercise less.");
+  assert.equal(anxiety.suggestion.action, "Water plus light movement more.");
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
+  assert.doesNotMatch(anxiety.suggestion.action, /\bless\b|avoid|restrict|reduce|stop/i);
 });
 
 test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
@@ -180,13 +181,13 @@ test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
   assert.equal(anxiety.suggestion.time, "night");
   assert.equal(anxiety.suggestion.source, "hrv");
   assert.equal(anxiety.suggestion.reason, "12 ms estimated HRV is low.");
-  assert.equal(anxiety.suggestion.action, "Water plus small food more; sitting still less.");
-  assert.doesNotMatch(anxiety.suggestion.action, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task/i);
+  assert.equal(anxiety.suggestion.action, "Water plus small food more; gentle walk more.");
+  assert.doesNotMatch(anxiety.suggestion.action, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
-test("blood recommendation actions stay inside food water or movement", () => {
-  const banned = /phone|screen|breath|exhale|task|focus|work|commitment|switch|reset|drift|open/i;
-  const allowed = /carb|protein|fiber|food|meal|snack|sugar|drink|water|walk|movement|exercise|sitting|intensity/i;
+test("blood recommendation actions stay positive and inside food water or movement", () => {
+  const banned = /phone|screen|breath|exhale|task|focus|work|commitment|switch|reset|drift|open|\bless\b|avoid|restrict|reduce|stop|sitting|intensity|skipped/i;
+  const allowed = /carb|protein|fiber|food|meal|snack|drink|water|walk|movement|exercise/i;
   const scenarios = [
     {
       glucose: { valueMgDl: 62 },
