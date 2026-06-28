@@ -546,10 +546,10 @@ function renderPatterns(data) {
   const patterns = data?.patterns || {};
   const prediction = patterns.prediction || null;
   if (patternTitle) {
-    patternTitle.textContent = patterns.title || prediction?.title || "Pattern: learning";
+    patternTitle.textContent = patterns.title || prediction?.title || "Pattern: checking";
   }
   if (patternDetail) {
-    patternDetail.textContent = patterns.detail || prediction?.detail || "Need more time-stamped glucose and health samples.";
+    patternDetail.textContent = patterns.detail || prediction?.detail || "No clear spike or dip yet. Consider water plus normal food more; easy walk more.";
   }
   if (patternBasis) {
     patternBasis.textContent = patterns.basis || prediction?.basis || "Recalculates after each upload.";

@@ -7,7 +7,7 @@
   <meta name="description" content="Blood paper explaining the personal anxiety score and HRV estimate.">
   <link rel="canonical" href="https://blood.aolabs.io/paper">
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20260628-sleep-action-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260628-dynamic-pattern-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood paper navigation">
@@ -37,10 +37,10 @@
 
     <article class="paper-doc">
       <h2>Abstract</h2>
-      <p>Blood turns automatic CONTOUR NEXT ONE glucose readings and Samsung/Health Connect heart rate, HRV, sleep, and steps into one visible stabilization score followed by a learned instability pattern and six aligned graphs: anxiety, glucose, HR, HRV, sleep, and steps. The anxiety estimate is not a diagnosis. It starts from a fixed raw baseline, adds or subtracts latest uploaded source factors, scales the result to one decimal on a 1-10 range, and selects a stabilizing food, water, or movement action from the strongest actionable glucose, HR, HRV, or step signal. Sleep stays visible as graph history and does not become the visible action source.</p>
+      <p>Blood turns automatic CONTOUR NEXT ONE glucose readings and Samsung/Health Connect heart rate, HRV, sleep, and steps into one visible stabilization score followed by a best-effort instability pattern and six aligned graphs: anxiety, glucose, HR, HRV, sleep, and steps. The anxiety estimate is not a diagnosis. It starts from a fixed raw baseline, adds or subtracts latest uploaded source factors, adds small dynamic factors for recent glucose drops or rises, HR rises, and HRV dips, scales the result to one decimal on a 1-10 range, and selects a stabilizing food, water, or movement action from the strongest actionable glucose, HR, HRV, or step signal. Sleep stays visible as graph history and does not become the visible action source.</p>
 
       <h2>Current formula</h2>
-      <p>Raw starts at 2.2. Stable glucose, calm heart rate, fresh solid sleep recovery, and high recent steps subtract from the score. Low glucose, high glucose, high heart rate, low HRV, fresh low sleep recovery, and low movement add to it. Sleep older than the freshness window stays on the graph instead of driving the current action. The visible score is <code>clamp(1, 10, raw * 2)</code>, rounded to one decimal place.</p>
+      <p>Raw starts at 2.2. Stable glucose, calm heart rate, fresh solid sleep recovery, and high daily steps subtract from the score. Low glucose, high glucose, high heart rate, low HRV, fresh low sleep recovery, low movement, quick glucose movement, HR rise, or HRV dip add to it. Sleep older than the freshness window stays on the graph instead of driving the current action. The visible score is <code>clamp(1, 10, raw * 2)</code>, rounded to one decimal place.</p>
 
       <h2>Current live example</h2>
       <p>The June 27, 2026 live read reconstructs as 4.4/10: 82 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV from sleep heart-rate samples, 431 minutes asleep, and 13,028 recent steps.</p>
@@ -49,10 +49,10 @@
       <p>Blood names the source reason and one positive eating, drinking, or movement action from the latest uploaded source state. The action does not use a live moment label because the phone bridge and Health Connect upload can lag behind the moment the page is opened.</p>
 
       <h2>Pattern window</h2>
-      <p>The top surface groups recent source records by Eastern time block and names the strongest actionable glucose, HR, HRV, or step states with values, such as HRV too low or HR too high. Sleep-only history stays on the graph. The pattern text does not collapse the result into a vague count of source samples.</p>
+      <p>The top surface groups recent source records by Eastern time block and names the strongest actionable glucose, HR, HRV, or step states with values, such as HRV too low or HR too high. When the rolling window is thin, Blood still gives the best current abnormal signal it can infer, labels it as possible, and pairs it with a concrete food, water, or movement action. Sleep-only history stays on the graph. The pattern text does not collapse the result into a vague count of source samples or a dead learning state.</p>
 
       <h2>Anxiety graph</h2>
-      <p>The anxiety graph reconstructs historical score points from stored glucose and health samples, then appends the latest score as the newest point. The six graphs share one x-axis endpoint. Current latest-upload values plot at that right endpoint while their labels keep the true source measurement time.</p>
+      <p>The anxiety graph reconstructs historical score points from stored glucose and health samples, including the recent change leading into each point when enough history exists, then appends the latest score as the newest point. The six graphs share one x-axis endpoint. Current latest-upload values plot at that right endpoint while their labels keep the true source measurement time. Steps are displayed as one latest daily total per Eastern date, not a sum of repeated upload packets.</p>
 
       <h2>Boundary</h2>
       <p>Heart rate is current only when the health bridge uploads and Samsung/Health Connect exposes current samples, so Blood shows both the health-upload time and source sample time. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from independent dense low-noise sleep/rest heart-rate windows, rejects noisy segments, and labels the result as estimated. This paper is a system record, not medical advice.</p>

@@ -805,6 +805,42 @@ tbody tr:last-child td {
   padding: 18px;
 }
 
+.score-citations {
+  margin-top: 18px;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.score-citations h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+
+.basis-list {
+  display: grid;
+  gap: 8px;
+  max-width: 1040px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.38;
+}
+
+.basis-list li {
+  padding-left: 3px;
+}
+
+.basis-list a {
+  color: #315d58;
+  font-weight: 850;
+}
+
 .paper-main {
   width: min(920px, calc(100% - 28px));
   margin: 0 auto;

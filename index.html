@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg?v=20260627-suite-drop">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260628-sleep-action-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260628-dynamic-pattern-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -78,8 +78,8 @@
           <small id="suggestion-reason">Personal estimate, not diagnosis.</small>
         </div>
         <div class="pattern-card" aria-label="instability pattern">
-          <strong id="pattern-title">Pattern: learning</strong>
-          <span id="pattern-detail">Checking time-stamped source history.</span>
+          <strong id="pattern-title">Pattern: checking</strong>
+          <span id="pattern-detail">Checking for glucose, HR, HRV, and step spikes or dips.</span>
           <small id="pattern-basis">Recalculates after each upload.</small>
         </div>
       </div>
@@ -232,8 +232,18 @@
         </div>
       </details>
     </section>
+
+    <section class="score-citations" aria-label="references">
+      <h2>references</h2>
+      <ol class="basis-list">
+        <li>Centers for Disease Control and Prevention. <a href="https://www.cdc.gov/diabetes/about/low-blood-sugar-hypoglycemia.html">Low Blood Sugar (Hypoglycemia)</a>. Low glucose can involve shakiness, fast heartbeat, nervousness, sweating, hunger, and other body signals that can feel like anxiety.</li>
+        <li>Task Force of the European Society of Cardiology and the North American Society of Pacing and Electrophysiology. <a href="https://pubmed.ncbi.nlm.nih.gov/8737210/">Heart rate variability: standards of measurement, physiological interpretation and clinical use</a>. European Heart Journal, 1996.</li>
+        <li>Chalmers J. A. et al. <a href="https://pubmed.ncbi.nlm.nih.gov/25071612/">Anxiety disorders are associated with reduced heart rate variability: a meta-analysis</a>. Frontiers in Psychiatry, 2014.</li>
+        <li>Schuch F. B. et al. <a href="https://pubmed.ncbi.nlm.nih.gov/31209958/">Physical activity protects from incident anxiety: a meta-analysis of prospective cohort studies</a>. Depression and Anxiety, 2019.</li>
+      </ol>
+    </section>
   </main>
 
-  <script src="./app.js?v=20260628-sleep-action-v1" defer></script>
+  <script src="./app.js?v=20260628-dynamic-pattern-v1" defer></script>
 </body>
 </html>

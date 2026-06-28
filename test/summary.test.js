@@ -277,6 +277,66 @@ test("blood recommendation actions stay positive and inside food water or moveme
   }
 });
 
+test("steps use latest daily total instead of summing repeated same-day uploads", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T18:00:00.000Z",
+    steps: [
+      { startTime: "2026-06-28T04:00:00.000Z", endTime: "2026-06-29T03:59:59.999Z", zoneOffset: "-04:00", count: 4200 },
+      { startTime: "2026-06-28T04:00:00.000Z", endTime: "2026-06-29T03:59:59.999Z", zoneOffset: "-04:00", count: 6100 },
+      { startTime: "2026-06-28T04:00:00.000Z", endTime: "2026-06-29T03:59:59.999Z", zoneOffset: "-04:00", count: 5900 }
+    ]
+  });
+  const health = summarizeHealthMetrics(metrics, null, null, new Date("2026-06-28T18:30:00.000Z"));
+
+  assert.equal(health.latest.steps.value, 6100);
+  assert.equal(health.latest.steps.date, "2026-06-28");
+  assert.equal(health.latest.steps.aggregation, "daily_latest_total");
+  assert.equal(health.trends.steps.length, 1);
+  assert.equal(health.trends.steps[0].value, 6100);
+});
+
+test("steps still sum separate same-day interval records", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T18:00:00.000Z",
+    steps: [
+      { clientRecordId: "morning", startTime: "2026-06-28T12:00:00.000Z", endTime: "2026-06-28T13:00:00.000Z", zoneOffset: "-04:00", count: 1200 },
+      { clientRecordId: "afternoon", startTime: "2026-06-28T17:00:00.000Z", endTime: "2026-06-28T18:00:00.000Z", zoneOffset: "-04:00", count: 900 }
+    ]
+  });
+  const health = summarizeHealthMetrics(metrics, null, null, new Date("2026-06-28T18:30:00.000Z"));
+
+  assert.equal(health.latest.steps.value, 2100);
+  assert.equal(health.latest.steps.aggregation, "daily_interval_sum");
+  assert.equal(health.trends.steps[0].value, 2100);
+});
+
+test("anxiety score uses quick metric changes from time history", () => {
+  const readings = sanitizePayload({
+    source: "test",
+    capturedAt: "2026-06-28T18:00:00.000Z",
+    readings: [
+      { measuredAt: "2026-06-28T15:00:00.000Z", valueMgDl: 160 },
+      { measuredAt: "2026-06-28T17:00:00.000Z", valueMgDl: 95 }
+    ]
+  });
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T18:00:00.000Z",
+    heartRate: [{ measuredAt: "2026-06-28T17:05:00.000Z", valueBpm: 68 }],
+    steps: [{ startTime: "2026-06-28T04:00:00.000Z", endTime: "2026-06-29T03:59:59.999Z", zoneOffset: "-04:00", count: 8000 }]
+  });
+  const health = summarizeHealthMetrics(metrics, null, readings.at(-1), new Date("2026-06-28T18:00:00.000Z"));
+  const summary = summarizeReadings(readings, health);
+
+  assert.ok(summary.health.anxiety.dynamics.some((factor) => factor.label === "glucose dropped quickly"));
+  assert.equal(summary.health.anxiety.suggestion.source, "glucose");
+  assert.match(summary.health.anxiety.suggestion.reason, /glucose drop/);
+  assert.match(summary.health.anxiety.suggestion.action, /Carb plus protein snack more; water more/);
+  assert.ok(summary.health.trends.anxiety.some((point) => /glucose drop/.test(point.reason)));
+});
+
 test("instability patterns identify the strongest source-backed time block", () => {
   const readings = sanitizePayload({
     source: "test",
@@ -337,8 +397,29 @@ test("sleep-only history stays off the visible pattern recommendation", () => {
     now: new Date("2026-06-28T12:00:00.000Z")
   });
 
-  assert.equal(patterns.status, "learning");
-  assert.doesNotMatch(`${patterns.detail} ${patterns.prediction?.detail || ""}`, /sleep|asleep|too short|short/i);
+  assert.equal(patterns.status, "best_effort");
+  assert.match(patterns.detail, /No clear spike or dip yet|Consider/);
+  assert.doesNotMatch(`${patterns.title} ${patterns.detail} ${patterns.prediction?.detail || ""}`, /sleep|asleep|too short|short|Need more|learning/i);
+});
+
+test("thin data pattern still gives best-effort abnormal signal and action", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T12:00:00.000Z",
+    hrv: [{ measuredAt: "2026-06-28T11:30:00.000Z", rmssdMs: 23 }]
+  });
+  const health = summarizeHealthMetrics(metrics, null, null, new Date("2026-06-28T12:00:00.000Z"));
+  const patterns = estimateInstabilityPatterns({
+    readings: [],
+    health,
+    now: new Date("2026-06-28T12:00:00.000Z")
+  });
+
+  assert.equal(patterns.status, "best_effort");
+  assert.match(patterns.title, /Pattern:/);
+  assert.match(patterns.detail, /possible dip signal|HRV too low|23 ms|Consider/);
+  assert.match(patterns.detail, /Water more; protein\/fiber meal rhythm more; gentle walk more/);
+  assert.doesNotMatch(`${patterns.title} ${patterns.detail}`, /Need more|learning|sleep|asleep|too short|short|phone|screen|breath|task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
 test("anxiety trend reconstructs historical score points from glucose and health samples", () => {

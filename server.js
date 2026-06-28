@@ -211,6 +211,19 @@ function metricDateFromTime(value, zoneOffset) {
   return readingDateFromTime(value, zoneOffset);
 }
 
+function easternDateString(value = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${lookup.year}-${lookup.month}-${lookup.day}`;
+}
+
 function stableMetricId(metric) {
   const basis = [
     metric.metricId,
@@ -219,10 +232,10 @@ function stableMetricId(metric) {
     metric.sourcePackage,
     metric.measuredAt,
     metric.startTime,
-    metric.endTime,
-    metric.value
+    metric.endTime
   ].filter(Boolean).join("|");
-  return crypto.createHash("sha256").update(basis).digest("hex").slice(0, 40);
+  const valueBasis = metric.type === "steps" ? basis : [basis, metric.value].filter(Boolean).join("|");
+  return crypto.createHash("sha256").update(valueBasis).digest("hex").slice(0, 40);
 }
 
 function numberInRange(value, min, max, field) {
@@ -780,24 +793,94 @@ function latestSleepFromFallback(sleepSummary) {
   };
 }
 
-function sumRecentSteps(metrics, hours = 24, referenceAt = new Date()) {
-  const referenceMs = new Date(referenceAt).getTime();
-  const safeReferenceMs = Number.isFinite(referenceMs) ? referenceMs : Date.now();
-  const cutoff = safeReferenceMs - hours * 60 * 60 * 1000;
-  const values = metrics
-    .filter((metric) => metric.type === "steps")
-    .filter((metric) => {
-      const time = new Date(metric.capturedAt || metric.measuredAt).getTime();
-      return Number.isFinite(time) && time >= cutoff && time <= safeReferenceMs + 60_000;
+function stepMetricSortTime(metric) {
+  return Math.max(
+    new Date(metric?.capturedAt).getTime() || 0,
+    new Date(metric?.measuredAt).getTime() || 0,
+    new Date(metric?.endTime).getTime() || 0
+  );
+}
+
+function dailyStepTotals(metrics, limit = 90) {
+  const byDate = new Map();
+  for (const metric of metrics.filter((item) => item.type === "steps")) {
+    if (!metric?.date || !metric?.measuredAt) continue;
+    const value = Number(metric.value);
+    if (!Number.isFinite(value)) continue;
+    const list = byDate.get(metric.date) || [];
+    list.push({ ...metric, value });
+    byDate.set(metric.date, list);
+  }
+  return Array.from(byDate.entries())
+    .map(([date, dayMetrics]) => {
+      const bySpan = new Map();
+      for (const metric of dayMetrics) {
+        const spanKey = [
+          metric.clientRecordId,
+          metric.sourcePackage,
+          metric.startTime,
+          metric.endTime
+        ].filter(Boolean).join("|") || metric.metricId;
+        const existing = bySpan.get(spanKey);
+        const shouldReplace = !existing ||
+          Number(metric.value) > Number(existing.value) ||
+          (Number(metric.value) === Number(existing.value) && stepMetricSortTime(metric) >= stepMetricSortTime(existing));
+        if (shouldReplace) bySpan.set(spanKey, metric);
+      }
+      const unique = Array.from(bySpan.values());
+      const dailyLike = unique.filter((metric) => {
+        const start = new Date(metric.startTime).getTime();
+        const end = new Date(metric.endTime).getTime();
+        const durationHours = Number.isFinite(start) && Number.isFinite(end) ? (end - start) / (60 * 60 * 1000) : 0;
+        return durationHours >= 18;
+      });
+      const chosen = dailyLike.length
+        ? dailyLike.sort((a, b) => Number(b.value) - Number(a.value) || stepMetricSortTime(b) - stepMetricSortTime(a))[0]
+        : unique.sort((a, b) => stepMetricSortTime(b) - stepMetricSortTime(a))[0];
+      const value = dailyLike.length
+        ? Number(chosen.value)
+        : unique.reduce((sum, metric) => sum + Number(metric.value || 0), 0);
+      return {
+        type: "steps",
+        source: chosen?.source,
+        sourcePackage: chosen?.sourcePackage,
+        date,
+        startTime: chosen?.startTime,
+        endTime: chosen?.endTime,
+        measuredAt: chosen?.measuredAt,
+        capturedAt: chosen?.capturedAt,
+        value,
+        unit: "steps",
+        aggregation: dailyLike.length ? "daily_latest_total" : "daily_interval_sum",
+        sourceRecordCount: unique.length
+      };
     })
-    .map((metric) => Number(metric.value || 0))
-    .filter(Number.isFinite);
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0);
+    .sort((a, b) => a.date.localeCompare(b.date) || stepMetricSortTime(a) - stepMetricSortTime(b))
+    .slice(-limit)
+    .map((metric) => ({
+      ...metric,
+      value: Math.round(metric.value)
+    }));
+}
+
+function currentDailySteps(metrics, referenceAt = new Date()) {
+  const daily = dailyStepTotals(metrics);
+  if (!daily.length) return null;
+  const referenceMs = new Date(referenceAt).getTime();
+  const safeReference = Number.isFinite(referenceMs) ? new Date(referenceMs) : new Date();
+  const today = easternDateString(safeReference);
+  return daily.find((metric) => metric.date === today) || daily.at(-1) || null;
 }
 
 function metricAverage(metrics, type, days = 14) {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  if (type === "steps") {
+    const values = dailyStepTotals(metrics)
+      .filter((metric) => new Date(metric.measuredAt).getTime() >= cutoff || new Date(metric.capturedAt).getTime() >= cutoff)
+      .map((metric) => Number(metric.value))
+      .filter(Number.isFinite);
+    return values.length ? average(values) : null;
+  }
   const values = metrics
     .filter((metric) => metric.type === type)
     .filter((metric) => new Date(metric.measuredAt).getTime() >= cutoff)
@@ -1125,36 +1208,7 @@ function sleepTrend(metrics, fallback = null, limit = 90) {
 }
 
 function stepsTrend(metrics, limit = 90) {
-  const byDate = new Map();
-  for (const metric of metrics.filter((item) => item.type === "steps")) {
-    if (!metric?.date || !metric?.measuredAt) continue;
-    const value = Number(metric.value);
-    if (!Number.isFinite(value)) continue;
-    const existing = byDate.get(metric.date) || {
-      type: "steps",
-      source: metric.source,
-      sourcePackage: metric.sourcePackage,
-      date: metric.date,
-      measuredAt: metric.measuredAt,
-      capturedAt: metric.capturedAt,
-      value: 0
-    };
-    existing.value += value;
-    if (new Date(metric.measuredAt).getTime() > new Date(existing.measuredAt).getTime()) {
-      existing.measuredAt = metric.measuredAt;
-      existing.capturedAt = metric.capturedAt;
-      existing.sourcePackage = metric.sourcePackage;
-    }
-    byDate.set(metric.date, existing);
-  }
-  return Array.from(byDate.values())
-    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
-    .slice(-limit)
-    .map((metric) => ({
-      ...metric,
-      value: Math.round(metric.value),
-      unit: "steps"
-    }));
+  return dailyStepTotals(metrics, limit);
 }
 
 function easternHour(date = new Date()) {
@@ -1346,6 +1400,34 @@ function formatPatternReason(item) {
   return value ? `${item.reason} (${value})` : item.reason;
 }
 
+function patternActionForItem(item = {}) {
+  const reason = String(item.reason || item.label || "").toLowerCase();
+  const source = item.source || item.key;
+  if (source === "glucose" && reason.includes("low")) return "Carb plus protein snack more; water more.";
+  if (source === "glucose") return "Protein/fiber with carbs more; water more; easy walk more.";
+  if (source === "heart_rate") return "Water more; protein/fiber snack more; easy walk more.";
+  if (source === "hrv") return "Water more; protein/fiber meal rhythm more; gentle walk more.";
+  if (source === "steps") return "Water more; normal meals more; short walks more.";
+  return "Water plus normal food more; easy walk more.";
+}
+
+function patternMoveLabel(item = {}) {
+  const reason = String(item.reason || item.label || "").toLowerCase();
+  const source = item.source || item.key;
+  if (source === "glucose" && reason.includes("low")) return "dip";
+  if (source === "glucose" && (reason.includes("high") || reason.includes("rose") || reason.includes("rise"))) return "spike";
+  if (source === "heart_rate") return "spike";
+  if (source === "hrv") return "dip";
+  if (source === "steps") return "low movement";
+  return "change";
+}
+
+function bestActionablePatternReason(reasons = []) {
+  return [...reasons]
+    .filter((reason) => reason?.reason && ACTIONABLE_PATTERN_SOURCES.has(reason.source))
+    .sort((a, b) => b.score - a.score || new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())[0] || null;
+}
+
 function summarizePatternReasons(reasons = []) {
   const buckets = new Map();
   for (const item of reasons) {
@@ -1372,6 +1454,7 @@ function summarizePatternReasons(reasons = []) {
 function summarizePatternBlock(block) {
   const averageScore = block.weightTotal ? block.weightedScore / block.weightTotal : 0;
   const unstableShare = block.weightTotal ? block.unstableWeight / block.weightTotal : 0;
+  const strongestReason = bestActionablePatternReason(block.reasons);
   const sourceEntries = Object.entries(block.sourceCounts)
     .sort((a, b) => b[1] - a[1])
     .map(([source, count]) => ({ source, label: PATTERN_SOURCE_LABELS[source] || source, count }));
@@ -1399,11 +1482,272 @@ function summarizePatternBlock(block) {
     sources: sourceEntries,
     topSources,
     actionableTopSources,
+    actionText: strongestReason ? patternActionForItem(strongestReason) : "",
+    strongestReason,
     conditionText: summarizePatternReasons(block.reasons),
     reasons: block.reasons
       .filter((reason) => ACTIONABLE_PATTERN_SOURCES.has(reason.source))
       .sort((a, b) => b.score - a.score || new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
       .slice(0, 4)
+  };
+}
+
+function durationLabel(hours) {
+  if (!Number.isFinite(hours) || hours <= 0) return "";
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  return `${Number(hours.toFixed(hours < 3 ? 1 : 0))} h`;
+}
+
+function previousPoint(points = [], atTime, minAgeMs, maxAgeMs) {
+  let selected = null;
+  let selectedTime = -Infinity;
+  for (const point of points) {
+    const time = new Date(point?.measuredAt).getTime();
+    if (!Number.isFinite(time) || time >= atTime) continue;
+    const age = atTime - time;
+    if (age < minAgeMs || age > maxAgeMs) continue;
+    if (time > selectedTime) {
+      selected = point;
+      selectedTime = time;
+    }
+  }
+  return selected;
+}
+
+function timedPoints(items = [], valueKey = "value") {
+  return [...items]
+    .map((item) => ({
+      ...item,
+      value: Number(item?.[valueKey] ?? item?.value),
+      measuredAt: item?.measuredAt
+    }))
+    .filter((item) => item.measuredAt && Number.isFinite(item.value))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+}
+
+function dynamicFactor(key, label, points, reason, action, measuredAt, value, previousValue, source = key) {
+  return {
+    key,
+    source,
+    label,
+    points: Number(points.toFixed(2)),
+    reason,
+    action,
+    measuredAt,
+    value,
+    previousValue
+  };
+}
+
+function estimateDynamicFactorsAtTime({
+  glucosePoints = [],
+  heartRatePoints = [],
+  hrvPoints = [],
+  glucose = null,
+  heartRate = null,
+  hrv = null
+} = {}) {
+  const factors = [];
+  const minAge = 20 * 60 * 1000;
+
+  const glucoseTime = sourceTimeMs(glucose);
+  const glucoseValue = Number(glucose?.valueMgDl ?? glucose?.value);
+  if (Number.isFinite(glucoseTime) && Number.isFinite(glucoseValue)) {
+    const previous = previousPoint(glucosePoints, glucoseTime, minAge, 6 * 60 * 60 * 1000);
+    if (previous) {
+      const hours = (glucoseTime - new Date(previous.measuredAt).getTime()) / (60 * 60 * 1000);
+      const delta = glucoseValue - Number(previous.value);
+      const rate = delta / hours;
+      const span = durationLabel(hours);
+      if ((delta <= -25 && glucoseValue <= 95) || rate <= -35) {
+        factors.push(dynamicFactor(
+          "glucose",
+          "glucose dropped quickly",
+          Math.min(0.55, Math.max(0.3, Math.abs(rate) / 110)),
+          `${Math.round(previous.value)} to ${Math.round(glucoseValue)} mg/dL glucose drop${span ? ` in ${span}` : ""}.`,
+          "Carb plus protein snack more; water more.",
+          new Date(glucoseTime).toISOString(),
+          glucoseValue,
+          Number(previous.value),
+          "glucose"
+        ));
+      } else if ((delta >= 30 && glucoseValue >= 135) || rate >= 45) {
+        factors.push(dynamicFactor(
+          "glucose",
+          "glucose rose quickly",
+          Math.min(0.5, Math.max(0.25, rate / 120)),
+          `${Math.round(previous.value)} to ${Math.round(glucoseValue)} mg/dL glucose rise${span ? ` in ${span}` : ""}.`,
+          "Protein/fiber with carbs more; water more; easy walk more.",
+          new Date(glucoseTime).toISOString(),
+          glucoseValue,
+          Number(previous.value),
+          "glucose"
+        ));
+      }
+    }
+  }
+
+  const heartRateTime = sourceTimeMs(heartRate);
+  const heartRateValue = Number(heartRate?.value);
+  if (Number.isFinite(heartRateTime) && Number.isFinite(heartRateValue)) {
+    const previous = previousPoint(heartRatePoints, heartRateTime, minAge, 3 * 60 * 60 * 1000);
+    if (previous) {
+      const hours = (heartRateTime - new Date(previous.measuredAt).getTime()) / (60 * 60 * 1000);
+      const delta = heartRateValue - Number(previous.value);
+      const span = durationLabel(hours);
+      if (delta >= 15 && heartRateValue >= 85) {
+        factors.push(dynamicFactor(
+          "heart_rate",
+          "HR rose quickly",
+          Math.min(0.45, Math.max(0.25, delta / 55)),
+          `${Math.round(previous.value)} to ${Math.round(heartRateValue)} bpm HR rise${span ? ` in ${span}` : ""}.`,
+          "Water more; protein/fiber snack more; easy walk more.",
+          new Date(heartRateTime).toISOString(),
+          heartRateValue,
+          Number(previous.value),
+          "heart_rate"
+        ));
+      }
+    }
+  }
+
+  const hrvTime = sourceTimeMs(hrv);
+  const hrvValue = Number(hrv?.value);
+  if (Number.isFinite(hrvTime) && Number.isFinite(hrvValue)) {
+    const previous = previousPoint(hrvPoints, hrvTime, 2 * 60 * 60 * 1000, 14 * 24 * 60 * 60 * 1000);
+    if (previous) {
+      const previousValue = Number(previous.value);
+      const drop = previousValue - hrvValue;
+      const dropShare = previousValue ? drop / previousValue : 0;
+      const hours = (hrvTime - new Date(previous.measuredAt).getTime()) / (60 * 60 * 1000);
+      const span = durationLabel(hours);
+      if (drop >= 10 && dropShare >= 0.22 && hrvValue < 45) {
+        const labelPrefix = hrv?.estimated || hrv?.derived ? "estimated HRV" : "HRV";
+        factors.push(dynamicFactor(
+          "hrv",
+          `${labelPrefix} dipped`,
+          Math.min(0.45, Math.max(0.25, dropShare)),
+          `${Math.round(previousValue)} to ${Math.round(hrvValue)} ms ${labelPrefix} dip${span ? ` in ${span}` : ""}.`,
+          "Water more; protein/fiber meal rhythm more; gentle walk more.",
+          new Date(hrvTime).toISOString(),
+          hrvValue,
+          previousValue,
+          "hrv"
+        ));
+      }
+    }
+  }
+
+  return factors.sort((a, b) => b.points - a.points);
+}
+
+function estimateDynamicFactorsForLatest({ readings = [], health = {} } = {}) {
+  const latest = health?.latest || {};
+  return estimateDynamicFactorsAtTime({
+    glucosePoints: timedPoints(readings, "valueMgDl"),
+    heartRatePoints: timedPoints(health?.trends?.heartRate || []),
+    hrvPoints: timedPoints(health?.trends?.hrv || []),
+    glucose: latest.glucose,
+    heartRate: latest.heartRate,
+    hrv: latest.hrv
+  });
+}
+
+function recomputeHealthAnxietyWithDynamics({ health = {}, readings = [], now = new Date() } = {}) {
+  const latest = health?.latest || {};
+  const dynamics = estimateDynamicFactorsForLatest({ readings, health });
+  const stepValue = latest.steps?.value;
+  const referenceAt = latestSourceEndpoint(
+    now,
+    latest.glucose?.capturedAt,
+    latest.glucose?.measuredAt,
+    latest.heartRate?.capturedAt,
+    latest.heartRate?.measuredAt,
+    latest.hrv?.capturedAt,
+    latest.hrv?.measuredAt,
+    latest.steps?.capturedAt,
+    latest.steps?.measuredAt,
+    health?.lastCapturedAt
+  );
+  return {
+    ...health,
+    anxiety: estimateAnxietyState({
+      glucose: latest.glucose,
+      heartRate: latest.heartRate,
+      hrv: latest.hrv,
+      sleep: health?.scoreInputs?.sleep,
+      recentSteps: stepValue != null && Number.isFinite(Number(stepValue)) ? Number(stepValue) : undefined,
+      referenceAt,
+      dynamics
+    })
+  };
+}
+
+function factorToPatternItem(factor = {}) {
+  if (!factor?.reason && !factor?.label) return null;
+  const source = factor.source || factor.key;
+  if (!ACTIONABLE_PATTERN_SOURCES.has(source)) return null;
+  return {
+    source,
+    reason: factor.label || factor.reason,
+    measuredAt: factor.measuredAt,
+    value: Number(factor.value),
+    score: Number(factor.points) || 0.25
+  };
+}
+
+function patternObservationTime(metric, now = new Date()) {
+  const measured = sourceTimeMs(metric);
+  const captured = new Date(metric?.capturedAt).getTime();
+  const reference = new Date(now).getTime();
+  if (Number.isFinite(measured) && Number.isFinite(captured) && Number.isFinite(reference) && measured > reference + 60_000) {
+    return metric.capturedAt;
+  }
+  return metric?.measuredAt || metric?.endTime || metric?.capturedAt || null;
+}
+
+function latestActionablePatternItem({ readings = [], health = {}, now = new Date() } = {}) {
+  const latest = health?.latest || {};
+  const candidates = [];
+  for (const factor of health?.anxiety?.dynamics || []) {
+    const item = factorToPatternItem(factor);
+    if (item?.measuredAt) candidates.push(item);
+  }
+  const latestGlucose = latest.glucose || readings[0] || null;
+  const sourceValues = [
+    { source: "glucose", value: latestGlucose?.valueMgDl, measuredAt: latestGlucose?.measuredAt },
+    { source: "heart_rate", value: latest.heartRate?.value, measuredAt: latest.heartRate?.measuredAt },
+    { source: "hrv", value: latest.hrv?.value, measuredAt: latest.hrv?.measuredAt },
+    { source: "steps", value: latest.steps?.value, measuredAt: patternObservationTime(latest.steps, now) }
+  ];
+  for (const sourceValue of sourceValues) {
+    if (!sourceValue.measuredAt) continue;
+    const score = patternScore(sourceValue.source, sourceValue.value);
+    if (score.score <= 0) continue;
+    candidates.push({
+      source: sourceValue.source,
+      reason: score.reason,
+      measuredAt: sourceValue.measuredAt,
+      value: Number(sourceValue.value),
+      score: score.score
+    });
+  }
+  return candidates
+    .filter((item) => item?.reason && ACTIONABLE_PATTERN_SOURCES.has(item.source))
+    .sort((a, b) => b.score - a.score || new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())[0] || null;
+}
+
+function patternDetailForItem(item) {
+  const block = timeBlockFromTimestamp(item?.measuredAt) || currentTimeBlock(easternHour(new Date()));
+  const blockMeta = TIME_BLOCKS.find((candidate) => candidate.key === block) || { label: block, range: "" };
+  const move = patternMoveLabel(item);
+  return {
+    block,
+    label: blockMeta.label,
+    range: blockMeta.range,
+    title: `Pattern: ${blockMeta.label}`,
+    detail: `${blockMeta.range}: possible ${move} signal - ${formatPatternReason(item)}. Consider ${patternActionForItem(item)}`,
+    basis: "Best effort from current uploads; recalculates after each upload."
   };
 }
 
@@ -1434,43 +1778,47 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
     addPatternObservation(stats, metric.measuredAt, "sleep", metric.value, now);
   }
   for (const metric of trends.steps || []) {
-    if (!recentEnough(metric.measuredAt)) continue;
-    addPatternObservation(stats, metric.measuredAt, "steps", metric.value, now);
+    const observedAt = patternObservationTime(metric, now);
+    if (!recentEnough(observedAt)) continue;
+    addPatternObservation(stats, observedAt, "steps", metric.value, now);
   }
 
   const blocks = Array.from(stats.values()).map(summarizePatternBlock);
   const totalObservations = blocks.reduce((sum, block) => sum + block.observations, 0);
   const ranked = [...blocks]
-    .filter((block) => block.observations >= 2)
+    .filter((block) => block.observations >= 1 && (block.conditionText || block.strongestReason))
     .sort((a, b) => b.averageScore - a.averageScore || b.unstableShare - a.unstableShare || b.observations - a.observations);
-  const prediction = ranked.find((block) => block.unstableCount > 0) || null;
+  const prediction = ranked.find((block) => block.conditionText) || ranked.find((block) => block.unstableCount > 0) || null;
   const currentBlockKey = currentTimeBlock(easternHour(now));
   const current = blocks.find((block) => block.block === currentBlockKey) || null;
   const conditionText = prediction?.conditionText || compactJoin(prediction?.actionableTopSources || []);
+  const moveLabel = patternMoveLabel(prediction?.strongestReason);
+  const actionText = prediction?.actionText || (prediction?.strongestReason ? patternActionForItem(prediction.strongestReason) : "");
   const predictionDetail = prediction && conditionText
-    ? `${prediction.range}: ${conditionText}.`
+    ? `${prediction.range}: ${totalObservations >= 6 && prediction.observations >= 2 ? "repeated" : "possible"} ${moveLabel} signal - ${conditionText}. Consider ${actionText || "water plus normal food more; easy walk more."}`
     : null;
-  const active = Boolean(predictionDetail && totalObservations >= 6);
-  const predictionBasis = prediction
+  const active = Boolean(predictionDetail && totalObservations >= 6 && prediction.observations >= 2);
+  const bestEffortItem = predictionDetail ? null : latestActionablePatternItem({ readings, health, now });
+  const bestEffort = bestEffortItem ? patternDetailForItem(bestEffortItem) : null;
+  const fallbackDetail = "No clear spike or dip yet. Consider water plus normal food more; easy walk more.";
+  const predictionBasis = active
     ? "45-day rolling window; recalculates after each upload."
-    : `${totalObservations} source samples so far; recalculates after each upload.`;
+    : "Best effort from current uploads; recalculates after each upload.";
 
   return {
-    status: active ? "active" : "learning",
+    status: active ? "active" : "best_effort",
     generatedAt: now.toISOString(),
     windowDays: 45,
     currentBlock: currentBlockKey,
     current,
     prediction: prediction ? {
       ...prediction,
-      title: `Unstable window: ${prediction.label}`,
+      title: `Pattern: ${prediction.label}`,
       detail: predictionDetail,
       basis: predictionBasis
-    } : null,
-    title: active ? `Unstable window: ${prediction.label}` : "Pattern: learning",
-    detail: active
-      ? predictionDetail
-      : "Need more time-stamped glucose, HR, HRV, and step samples.",
+    } : bestEffort,
+    title: prediction ? `Pattern: ${prediction.label}` : (bestEffort?.title || "Pattern: checking"),
+    detail: predictionDetail || bestEffort?.detail || fallbackDetail,
     basis: predictionBasis,
     blocks
   };
@@ -1481,7 +1829,7 @@ function pushFactor(factors, key, label, points, reason, action) {
   factors.push({ key, label, points: Number(points.toFixed(2)), reason, action });
 }
 
-function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour, referenceAt = null } = {}) {
+function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour, referenceAt = null, dynamics = [] } = {}) {
   const factors = [];
   let raw = 2.2;
 
@@ -1563,6 +1911,19 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     }
   }
 
+  const dynamicFactors = [...dynamics]
+    .filter((factor) => factor && Number.isFinite(Number(factor.points)) && Number(factor.points) > 0)
+    .sort((a, b) => Number(b.points) - Number(a.points))
+    .slice(0, 3)
+    .map((factor) => ({
+      ...factor,
+      points: Number(Number(factor.points).toFixed(2))
+    }));
+  for (const factor of dynamicFactors) {
+    raw += factor.points;
+    pushFactor(factors, factor.key, factor.label, factor.points, factor.reason, factor.action);
+  }
+
   const score = Number(Math.max(1, Math.min(10, raw * 2)).toFixed(1));
   const actionableFactors = factors.filter((factor) => factor.key !== "sleep");
   const primary = actionableFactors.filter((factor) => factor.points > 0).sort((a, b) => b.points - a.points)[0]
@@ -1588,6 +1949,7 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     label: score <= 2.5 ? "low" : score <= 4.5 ? "steady" : score <= 6.5 ? "watch" : score <= 8 ? "high" : "very high",
     raw: Number(raw.toFixed(2)),
     factors,
+    dynamics: dynamicFactors,
     suggestion,
     note: "Personal stabilization estimate from latest uploaded health signals; not a diagnosis."
   };
@@ -1611,7 +1973,7 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
   const trends = health?.trends || {};
   const glucosePoints = readings
     .filter((reading) => reading?.measuredAt && Number.isFinite(Number(reading.valueMgDl)))
-    .map((reading) => ({ ...reading, valueMgDl: Number(reading.valueMgDl) }))
+    .map((reading) => ({ ...reading, value: Number(reading.valueMgDl), valueMgDl: Number(reading.valueMgDl) }))
     .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
   const heartRatePoints = [...(trends.heartRate || [])]
     .filter((metric) => metric?.measuredAt && Number.isFinite(Number(metric.value)))
@@ -1661,13 +2023,22 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
       const steps = latestAtOrBefore(stepPoints, time, 36 * 60 * 60 * 1000, (metric) => Number(metric.value));
       const sourceCount = [glucose, heartRate, hrv, sleep, Number.isFinite(steps) ? steps : null].filter((item) => item != null).length;
       if (sourceCount < 2) return null;
+      const dynamics = estimateDynamicFactorsAtTime({
+        glucosePoints,
+        heartRatePoints,
+        hrvPoints,
+        glucose,
+        heartRate,
+        hrv
+      });
       const anxiety = estimateAnxietyState({
         glucose,
         heartRate,
         hrv,
         sleep,
         recentSteps: steps,
-        hour: easternHour(at)
+        hour: easternHour(at),
+        dynamics
       });
       return {
         measuredAt: at.toISOString(),
@@ -1740,7 +2111,8 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
   const hrvSeries = hrvTrend(normalized);
   const hrv = hrvSeries.at(-1) || null;
   const latestStepsMetric = latestMetric(normalized, "steps");
-  const recentSteps = sumRecentSteps(normalized, 24, latestStepsMetric?.capturedAt || latestStepsMetric?.measuredAt || new Date());
+  const currentStepTotal = currentDailySteps(normalized, now);
+  const recentSteps = Number.isFinite(Number(currentStepTotal?.value)) ? Number(currentStepTotal.value) : null;
   const lastCapturedAt = normalized
     .map((metric) => metric.capturedAt)
     .filter(Boolean)
@@ -1768,9 +2140,13 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     steps: {
       type: "steps",
       value: recentSteps,
-      unit: "steps_24h",
-      measuredAt: latestStepsMetric?.measuredAt || null,
-      capturedAt: latestStepsMetric?.capturedAt || null
+      unit: "steps_day",
+      date: currentStepTotal?.date || latestStepsMetric?.date || null,
+      startTime: currentStepTotal?.startTime || latestStepsMetric?.startTime || null,
+      endTime: currentStepTotal?.endTime || latestStepsMetric?.endTime || null,
+      measuredAt: currentStepTotal?.measuredAt || latestStepsMetric?.measuredAt || null,
+      capturedAt: currentStepTotal?.capturedAt || latestStepsMetric?.capturedAt || null,
+      aggregation: currentStepTotal?.aggregation || "daily_latest_total"
     }
   };
 
@@ -1828,11 +2204,12 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
     }))
     .filter((reading) => reading.readingDate >= PUBLIC_MIN_READING_DATE)
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
-  const anxietyTrend = estimateAnxietyTrend({ readings: normalized, health });
+  const healthWithDynamicAnxiety = recomputeHealthAnxietyWithDynamics({ health, readings: normalized });
+  const anxietyTrend = estimateAnxietyTrend({ readings: normalized, health: healthWithDynamicAnxiety });
   const healthWithAnxietyTrend = {
-    ...health,
+    ...healthWithDynamicAnxiety,
     trends: {
-      ...(health?.trends || {}),
+      ...(healthWithDynamicAnxiety?.trends || {}),
       anxiety: anxietyTrend
     }
   };

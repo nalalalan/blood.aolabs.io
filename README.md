@@ -2,7 +2,7 @@
 
 Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, sleep, and steps. Blood estimates HRV from sleep/rest heart-rate samples when true HRV/RMSSD is unavailable.
 
-The public page renders a compact top anxiety estimate on a `/10` scale followed by six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. The shared x-axis ends at the newest current upload endpoint, so current latest-upload values sit on the right edge while labels keep their true source times. Sleep stays visible as history; old sleep does not drive the current action, and sleep is never selected as the visible recommendation source. Viewing the graph is public so it works from any device; writing records requires the ingest token.
+The public page renders a compact top anxiety estimate on a `/10` scale followed by six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. The score uses latest uploaded values plus recent source history, so quick glucose drops/rises, HR rises, and HRV dips can affect the score before the endpoint alone explains the state. The shared x-axis ends at the newest current upload endpoint, so current latest-upload values sit on the right edge while labels keep their true source times. Steps are daily Samsung-style totals: the current day accumulates as newer uploads arrive, and the next day starts a separate total. Sleep stays visible as history; old sleep does not drive the current action, and sleep is never selected as the visible recommendation source. Viewing the graph is public so it works from any device; writing records requires the ingest token.
 
 ## Data path
 
@@ -24,7 +24,7 @@ Fallbacks only:
 
 `Manual mg/dL entry -> blood.aolabs.io Write path form -> Blood API -> graph`
 
-The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there. If true HRV/RMSSD is unavailable, Blood calculates an estimated HRV only from sufficiently dense, clean, independent sleep/rest HR windows.
+The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there. Step samples are collapsed to one latest daily total per Eastern date so repeated Health Connect uploads do not inflate the graph. If true HRV/RMSSD is unavailable, Blood calculates an estimated HRV only from sufficiently dense, clean, independent sleep/rest HR windows.
 
 ## Phone setup
 
