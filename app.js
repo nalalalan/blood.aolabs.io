@@ -80,11 +80,11 @@ function sourceFreshnessText(data) {
   const parts = [];
 
   if (!uploadAt) {
-    parts.push("No phone upload reached Blood yet.");
+    parts.push("No health upload reached Blood yet.");
   } else if (uploadAge != null && uploadAge > 45) {
-    parts.push(`Phone upload stale: ${formatDateTime(uploadAt)}.`);
+    parts.push(`Health upload stale: ${formatDateTime(uploadAt)}.`);
   } else {
-    parts.push(`Phone upload ${formatDateTime(uploadAt)}.`);
+    parts.push(`Health upload ${formatDateTime(uploadAt)}.`);
   }
 
   if (!heartRateAt) {
@@ -518,10 +518,12 @@ function renderHealth(data) {
     suggestionTime.textContent = suggestion.time ? `Now: ${suggestion.time}` : "Now";
   }
   if (suggestionAction) {
-    suggestionAction.textContent = suggestion.action || "Blood will choose the next stabilizing action from the current outlier.";
+    const reason = suggestion.reason || "";
+    const action = suggestion.action || "Blood will choose the next stabilizing action from the current outlier.";
+    suggestionAction.textContent = reason ? `${reason} ${action}` : action;
   }
   if (suggestionReason) {
-    suggestionReason.textContent = suggestion.reason || anxiety.note || "Personal estimate, not diagnosis.";
+    suggestionReason.textContent = anxiety.note || "Personal estimate, not diagnosis.";
   }
 }
 
@@ -548,9 +550,10 @@ function renderData(data) {
   latestUnit.textContent = "mg/dL";
   latestTime.textContent = formatDateTime(latest.measuredAt);
   latestSource.textContent = sourceLabel(latest);
-  syncLine.textContent = data.lastCapturedAt
-    ? `Last upload ${formatDateTime(data.lastCapturedAt)}.`
-    : "Readings are present; no bridge upload time was stored.";
+  syncLine.textContent = [
+    data.lastCapturedAt ? `Glucose upload ${formatDateTime(data.lastCapturedAt)}.` : "Glucose upload time missing.",
+    data.health?.lastCapturedAt ? `Health upload ${formatDateTime(data.health.lastCapturedAt)}.` : "Health upload waiting."
+  ].join(" ");
   renderAllCharts(data);
   renderTable(data);
 }

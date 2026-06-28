@@ -163,6 +163,64 @@ test("anxiety suggestion uses current block and one more-less action", () => {
 
   assert.equal(anxiety.suggestion.time, "afternoon");
   assert.equal(anxiety.suggestion.source, "heart_rate");
-  assert.equal(anxiety.suggestion.action, "Slow exhales more; screen checking less.");
+  assert.equal(anxiety.suggestion.action, "Water plus light movement more; hard exercise less.");
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
+});
+
+test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
+  const anxiety = estimateAnxietyState({
+    glucose: { valueMgDl: 104 },
+    heartRate: { value: 68 },
+    hrv: { value: 12, estimated: true, derived: true },
+    sleep: { asleepMinutes: 430 },
+    recentSteps: 5300,
+    hour: 23
+  });
+
+  assert.equal(anxiety.suggestion.time, "night");
+  assert.equal(anxiety.suggestion.source, "hrv");
+  assert.equal(anxiety.suggestion.reason, "12 ms estimated HRV is low.");
+  assert.equal(anxiety.suggestion.action, "Water plus small food more; sitting still less.");
+  assert.doesNotMatch(anxiety.suggestion.action, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task/i);
+});
+
+test("blood recommendation actions stay inside food water or movement", () => {
+  const banned = /phone|screen|breath|exhale|task|focus|work|commitment|switch|reset|drift|open/i;
+  const allowed = /carb|protein|fiber|food|meal|snack|sugar|drink|water|walk|movement|exercise|sitting|intensity/i;
+  const scenarios = [
+    {
+      glucose: { valueMgDl: 62 },
+      heartRate: { value: 104 },
+      hrv: { value: 12, estimated: true },
+      sleep: { asleepMinutes: 240 },
+      recentSteps: 900,
+      hour: 10
+    },
+    {
+      glucose: { valueMgDl: 145 },
+      heartRate: { value: 88 },
+      hrv: { value: 32, estimated: true },
+      sleep: { asleepMinutes: 340 },
+      recentSteps: 2500,
+      hour: 14
+    },
+    {
+      glucose: { valueMgDl: 104 },
+      heartRate: { value: 68 },
+      hrv: { value: 70 },
+      sleep: { asleepMinutes: 430 },
+      recentSteps: 9000,
+      hour: 23
+    },
+    { hour: 23 }
+  ];
+  const actions = scenarios.flatMap((scenario) => {
+    const anxiety = estimateAnxietyState(scenario);
+    return [...anxiety.factors.map((factor) => factor.action), anxiety.suggestion.action];
+  });
+
+  for (const action of actions) {
+    assert.match(action, allowed);
+    assert.doesNotMatch(action, banned);
+  }
 });

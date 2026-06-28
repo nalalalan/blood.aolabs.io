@@ -19,7 +19,7 @@ Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io
 Current bridge/UI boundary:
 
 - Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
-- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood now shows both the phone-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
+- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood now shows both the health-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
 - True HRV is current only when Health Connect exposes RMSSD HRV records. Without that source, Blood uses the labeled sleep/rest HR estimate and shows its estimate timestamp.
 - A direct Samsung Health current-feed path would require the proprietary Samsung Health Data SDK or a separate watch sensor bridge; the current Blood Bridge reads the Health Connect copy.
 
@@ -65,4 +65,4 @@ Suggestion timing is deliberately simple current-block labeling, not delay sched
 - 6 PM to before 10 PM ET: evening
 - 10 PM to before 5 AM ET: night
 
-The suggestion action is taken from the strongest positive current factor and written as one direct more/less adjustment. If no positive factor exists, Blood returns a steady-pattern action.
+The suggestion action is taken from the strongest positive current factor and written as source reason plus one direct food, water, or movement adjustment. If no positive factor exists, Blood returns a water/food/movement action. The visible suggestion must name the triggering metric, value or freshness boundary, and concrete behavior so it does not read like a disconnected wellness fragment. Blood recommendations do not use phone, breathing, task-switching, focus, or work-management language.
