@@ -7,7 +7,7 @@
   <meta name="description" content="Blood paper explaining the personal anxiety score and HRV estimate.">
   <link rel="canonical" href="https://blood.aolabs.io/paper">
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20260628-latest-upload-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260628-pattern-axis-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood paper navigation">
@@ -49,10 +49,10 @@
       <p>Blood names the source reason and one positive eating, drinking, or movement action from the latest uploaded source state. The action does not use a live moment label because the phone bridge and Health Connect upload can lag behind the moment the page is opened.</p>
 
       <h2>Pattern window</h2>
-      <p>The top surface groups recent glucose, HR, HRV, sleep, and step records by Eastern time block, scores source states as too high, too low, near an edge, short, light, or raised, and shows the block with the strongest recent pattern. The prediction recalculates from the latest uploads instead of using a fixed schedule.</p>
+      <p>The top surface groups recent glucose, HR, HRV, sleep, and step records by Eastern time block and names the strongest concrete states with values, such as HRV too low or HR too high. It does not collapse the result into a vague count of source samples.</p>
 
       <h2>Anxiety graph</h2>
-      <p>The anxiety graph reconstructs historical score points from stored glucose and health samples, then appends the latest score as the newest point. It uses the same time axis as the five source graphs, producing six aligned graphs total.</p>
+      <p>The anxiety graph reconstructs historical score points from stored glucose and health samples, then appends the latest score as the newest point. The six graphs share one x-axis endpoint. Current latest-upload values plot at that right endpoint while their labels keep the true source measurement time.</p>
 
       <h2>Boundary</h2>
       <p>Heart rate is current only when the health bridge uploads and Samsung/Health Connect exposes current samples, so Blood shows both the health-upload time and source sample time. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from independent dense low-noise sleep/rest heart-rate windows, rejects noisy segments, and labels the result as estimated. This paper is a system record, not medical advice.</p>

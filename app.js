@@ -64,6 +64,14 @@ function timeMs(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function latestPlotAt(metric) {
+  return metric?.capturedAt || metric?.measuredAt || "";
+}
+
+function pointPlotTime(point) {
+  return timeMs(point?.plotAt) ?? timeMs(point?.measuredAt) ?? 0;
+}
+
 function minutesBetween(later, earlier) {
   const laterMs = timeMs(later);
   const earlierMs = timeMs(earlier);
@@ -205,6 +213,16 @@ function buildSeries(data) {
   const latest = data?.health?.latest || {};
   const latestAnxiety = data?.health?.anxiety || {};
   const latestGlucose = latest.glucose || data?.latest || null;
+  const currentEndpointAt = [
+    latestGlucose,
+    latest.heartRate,
+    latest.hrv,
+    latest.sleep,
+    latest.steps
+  ]
+    .map(latestPlotAt)
+    .filter(Boolean)
+    .sort((a, b) => (timeMs(b) ?? 0) - (timeMs(a) ?? 0))[0] || "";
   const latestSleepMinutes = latest.sleep?.asleepMinutes ?? latest.sleep?.value;
   const currentLabels = {
     anxiety: Number.isFinite(Number(latestAnxiety.score)) ? `${formatScore10(latestAnxiety.score)}/10` : "",
@@ -226,15 +244,25 @@ function buildSeries(data) {
     sleep: metricStamp(latest.sleep),
     steps: metricStamp(latest.steps, "capturedAt")
   };
-  const withLatest = (points, latestMetric, valueMapper = (metric) => metric?.value) => {
-    if (points.length || !latestMetric?.measuredAt) return points;
+  const withLatest = (points, latestMetric, valueMapper = (metric) => metric?.value, titleMapper = null) => {
+    if (!latestMetric?.measuredAt) return points;
     const value = valueMapper(latestMetric);
     if (!Number.isFinite(Number(value))) return points;
-    return [{
+    const latestPoint = {
       measuredAt: latestMetric.measuredAt,
+      plotAt: latestPlotAt(latestMetric),
       value: Number(value),
-      title: `${formatDateTime(latestMetric.measuredAt)}: ${formatNumber(value)}`
-    }];
+      title: titleMapper
+        ? titleMapper(latestMetric, Number(value))
+        : `${formatDateTime(latestMetric.measuredAt)}: ${formatNumber(value)}`
+    };
+    if (!points.length) return [latestPoint];
+    const latestTime = timeMs(latestMetric.measuredAt);
+    const matchedIndex = points.findIndex((point) => timeMs(point.measuredAt) === latestTime);
+    if (matchedIndex >= 0) {
+      return points.map((point, index) => (index === matchedIndex ? { ...point, ...latestPoint } : point));
+    }
+    return [...points, latestPoint];
   };
   return [
     {
@@ -247,8 +275,9 @@ function buildSeries(data) {
       yFloor: 1,
       yCeil: 10,
       ticks: [1, 3, 5, 7, 10],
-      points: [...(healthTrends.anxiety || [])].map((point) => ({
+      points: [...(healthTrends.anxiety || [])].map((point, index, list) => ({
         measuredAt: point.measuredAt,
+        plotAt: index === list.length - 1 ? currentEndpointAt : point.plotAt,
         value: point.value,
         title: `${formatDateTime(point.measuredAt)}: ${formatScore10(point.value)}/10${point.reason ? ` - ${point.reason}` : ""}`
       }))
@@ -264,11 +293,11 @@ function buildSeries(data) {
       yFloor: 60,
       yCeil: 200,
       ticks: [60, 100, 140, 180, 220],
-      points: [...(data?.trend || [])].map((reading) => ({
+      points: withLatest([...(data?.trend || [])].map((reading) => ({
         measuredAt: reading.measuredAt,
         value: reading.valueMgDl,
         title: `${formatDateTime(reading.measuredAt)}: ${reading.valueMgDl} mg/dL`
-      }))
+      })), latestGlucose, (metric) => metric?.valueMgDl, (metric, value) => `${formatDateTime(metric.measuredAt)}: ${Math.round(value)} mg/dL`)
     },
     {
       key: "heart-rate",
@@ -284,7 +313,7 @@ function buildSeries(data) {
         measuredAt: metric.measuredAt,
         value: metric.value,
         title: `${formatDateTime(metric.measuredAt)}: ${metric.value} bpm`
-      })), latest.heartRate)
+      })), latest.heartRate, (metric) => metric?.value, (metric, value) => `${formatDateTime(metric.measuredAt)}: ${Math.round(value)} bpm`)
     },
     {
       key: "hrv",
@@ -300,7 +329,7 @@ function buildSeries(data) {
         measuredAt: metric.measuredAt,
         value: metric.value,
         title: `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)} (${hrvDetailLabel(metric)})`
-      })), latest.hrv)
+      })), latest.hrv, (metric) => metric?.value, (metric) => `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)} (${hrvDetailLabel(metric)})`)
     },
     {
       key: "sleep",
@@ -319,7 +348,7 @@ function buildSeries(data) {
           value,
           title: `${formatDateTime(metric.measuredAt)}: ${value.toFixed(1)}h asleep`
         };
-      }), latest.sleep, (metric) => Number(metric.asleepMinutes ?? metric.value) / 60)
+      }), latest.sleep, (metric) => Number(metric.asleepMinutes ?? metric.value) / 60, (metric, value) => `${formatDateTime(metric.measuredAt)}: ${value.toFixed(1)}h asleep`)
     },
     {
       key: "steps",
@@ -335,13 +364,13 @@ function buildSeries(data) {
         measuredAt: metric.measuredAt,
         value: metric.value,
         title: `${formatDateTime(metric.measuredAt)}: ${formatNumber(metric.value)} steps`
-      })), latest.steps)
+      })), latest.steps, (metric) => metric?.value, (metric, value) => `${formatDateTime(metric.measuredAt)}: ${formatNumber(value)} steps`)
     }
   ].map((series) => ({
     ...series,
     points: series.points
       .filter((point) => point.measuredAt && Number.isFinite(Number(point.value)))
-      .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+      .sort((a, b) => pointPlotTime(a) - pointPlotTime(b) || (timeMs(a.measuredAt) ?? 0) - (timeMs(b.measuredAt) ?? 0))
   }));
 }
 
@@ -349,7 +378,7 @@ function filterSeriesPoints(points) {
   if (activeRange === "all") return points;
   const days = Number.parseInt(activeRange, 10);
   const cutoff = days === 1 ? Date.now() - 24 * 60 * 60 * 1000 : daysAgo(days);
-  return points.filter((point) => new Date(point.measuredAt).getTime() >= cutoff);
+  return points.filter((point) => pointPlotTime(point) >= cutoff);
 }
 
 function formatAxisValue(value, unit) {
@@ -395,7 +424,7 @@ function renderAllCharts(data) {
     : { top: 34, right: 82, bottom: 44, left: 62 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
-  const times = allPoints.map((point) => new Date(point.measuredAt).getTime());
+  const times = allPoints.map(pointPlotTime);
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
   const timeDomain = Math.max(1, maxTime - minTime);
@@ -413,11 +442,11 @@ function renderAllCharts(data) {
     const line = points
       .map((point, index) => {
         const command = index === 0 ? "M" : "L";
-        return `${command} ${xFor(new Date(point.measuredAt).getTime()).toFixed(1)} ${yFor(point.value).toFixed(1)}`;
+        return `${command} ${xFor(pointPlotTime(point)).toFixed(1)} ${yFor(point.value).toFixed(1)}`;
       })
       .join(" ");
     const area = points.length > 1
-      ? `${line} L ${xFor(new Date(points[points.length - 1].measuredAt).getTime()).toFixed(1)} ${yFor(minValue).toFixed(1)} L ${xFor(new Date(points[0].measuredAt).getTime()).toFixed(1)} ${yFor(minValue).toFixed(1)} Z`
+      ? `${line} L ${xFor(pointPlotTime(points[points.length - 1])).toFixed(1)} ${yFor(minValue).toFixed(1)} L ${xFor(pointPlotTime(points[0])).toFixed(1)} ${yFor(minValue).toFixed(1)} Z`
       : "";
     const ticks = series.ticks
       .filter((value) => value >= minValue && value <= maxValue)
@@ -444,7 +473,7 @@ function renderAllCharts(data) {
       .join("");
     const circles = points
       .map((point) => {
-        const x = xFor(new Date(point.measuredAt).getTime());
+        const x = xFor(pointPlotTime(point));
         const y = yFor(point.value);
         return `
           <circle class="point ${series.key}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${points.length > 90 ? 2.4 : 3.8}">

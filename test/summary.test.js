@@ -284,7 +284,8 @@ test("instability patterns identify the strongest source-backed time block", () 
   assert.match(patterns.prediction.title, /night/);
   assert.match(patterns.prediction.detail, /glucose|HR|HRV/);
   assert.match(patterns.prediction.detail, /too high|too low|near high|raised|light|short/);
-  assert.doesNotMatch(patterns.prediction.detail, /flagged|outlier/i);
+  assert.match(patterns.prediction.detail, /mg\/dL|bpm|ms|h|steps/);
+  assert.doesNotMatch(patterns.prediction.detail, /flagged|outlier|source samples|read high, low, short, light, or raised/i);
   assert.match(patterns.prediction.basis, /recalculates after each upload/);
 });
 

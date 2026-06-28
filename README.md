@@ -2,7 +2,7 @@
 
 Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, sleep, and steps. Blood estimates HRV from sleep/rest heart-rate samples when true HRV/RMSSD is unavailable.
 
-The public page renders a compact top anxiety estimate on a `/10` scale followed by six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. Viewing the graph is public so it works from any device; writing records requires the ingest token.
+The public page renders a compact top anxiety estimate on a `/10` scale followed by six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. The shared x-axis ends at the newest current upload endpoint, so current latest-upload values sit on the right edge while labels keep their true source times. Viewing the graph is public so it works from any device; writing records requires the ingest token.
 
 ## Data path
 

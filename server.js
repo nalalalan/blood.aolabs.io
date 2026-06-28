@@ -780,11 +780,16 @@ function latestSleepFromFallback(sleepSummary) {
   };
 }
 
-function sumRecentSteps(metrics, hours = 24) {
-  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+function sumRecentSteps(metrics, hours = 24, referenceAt = new Date()) {
+  const referenceMs = new Date(referenceAt).getTime();
+  const safeReferenceMs = Number.isFinite(referenceMs) ? referenceMs : Date.now();
+  const cutoff = safeReferenceMs - hours * 60 * 60 * 1000;
   const values = metrics
     .filter((metric) => metric.type === "steps")
-    .filter((metric) => new Date(metric.measuredAt).getTime() >= cutoff)
+    .filter((metric) => {
+      const time = new Date(metric.capturedAt || metric.measuredAt).getTime();
+      return Number.isFinite(time) && time >= cutoff && time <= safeReferenceMs + 60_000;
+    })
     .map((metric) => Number(metric.value || 0))
     .filter(Number.isFinite);
   if (!values.length) return null;
@@ -1303,20 +1308,42 @@ function compactJoin(items = []) {
   return items.filter(Boolean).slice(0, 3).join(" + ");
 }
 
+function patternValueLabel(item) {
+  const value = Number(item?.value);
+  if (!Number.isFinite(value)) return "";
+  if (item.source === "glucose") return `${Math.round(value)} mg/dL`;
+  if (item.source === "heart_rate") return `${Math.round(value)} bpm`;
+  if (item.source === "hrv") return `${Math.round(value)} ms`;
+  if (item.source === "sleep") return `${(value / 60).toFixed(1)} h`;
+  if (item.source === "steps") return `${Math.round(value).toLocaleString("en-US")} steps`;
+  return String(Math.round(value));
+}
+
+function formatPatternReason(item) {
+  if (!item?.reason) return "";
+  const value = patternValueLabel(item);
+  return value ? `${item.reason} (${value})` : item.reason;
+}
+
 function summarizePatternReasons(reasons = []) {
   const buckets = new Map();
   for (const item of reasons) {
     if (!item?.reason) continue;
-    const current = buckets.get(item.reason) || { reason: item.reason, count: 0, scoreTotal: 0, latestTime: 0 };
+    const current = buckets.get(item.reason) || { reason: item.reason, count: 0, scoreTotal: 0, latestTime: 0, strongest: item };
     current.count += 1;
     current.scoreTotal += Number(item.score) || 0;
-    current.latestTime = Math.max(current.latestTime, new Date(item.measuredAt).getTime() || 0);
+    const itemTime = new Date(item.measuredAt).getTime() || 0;
+    current.latestTime = Math.max(current.latestTime, itemTime);
+    const strongestScore = Number(current.strongest?.score) || 0;
+    if ((Number(item.score) || 0) > strongestScore || ((Number(item.score) || 0) === strongestScore && itemTime > (new Date(current.strongest?.measuredAt).getTime() || 0))) {
+      current.strongest = item;
+    }
     buckets.set(item.reason, current);
   }
   const topReasons = Array.from(buckets.values())
     .sort((a, b) => b.count - a.count || b.scoreTotal - a.scoreTotal || b.latestTime - a.latestTime)
     .slice(0, 3)
-    .map((item) => item.reason);
+    .map((item) => formatPatternReason(item.strongest));
   return compactJoin(topReasons);
 }
 
@@ -1393,9 +1420,8 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
   const current = blocks.find((block) => block.block === currentBlockKey) || null;
   const active = Boolean(prediction && totalObservations >= 6);
   const conditionText = prediction?.conditionText || compactJoin(prediction?.topSources || []) || "source state moved";
-  const observationWord = prediction?.observations === 1 ? "sample" : "samples";
   const predictionDetail = prediction
-    ? `${prediction.range}: ${conditionText}. ${prediction.unstableCount} of ${prediction.observations} source ${observationWord} read high, low, short, light, or raised.`
+    ? `${prediction.range}: ${conditionText}.`
     : null;
   const predictionBasis = prediction
     ? "45-day rolling window; recalculates after each upload."
@@ -1672,8 +1698,8 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
   const heartRate = latestMetric(normalized, "heart_rate");
   const hrvSeries = hrvTrend(normalized);
   const hrv = hrvSeries.at(-1) || null;
-  const recentSteps = sumRecentSteps(normalized, 24);
   const latestStepsMetric = latestMetric(normalized, "steps");
+  const recentSteps = sumRecentSteps(normalized, 24, latestStepsMetric?.capturedAt || latestStepsMetric?.measuredAt || new Date());
   const lastCapturedAt = normalized
     .map((metric) => metric.capturedAt)
     .filter(Boolean)
