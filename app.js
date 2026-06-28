@@ -11,6 +11,8 @@ const charts = document.getElementById("charts");
 const currentReadings = document.querySelector(".current-readings");
 const readingsBody = document.getElementById("readings-body");
 const recordCount = document.getElementById("record-count");
+const manageTokenInput = document.getElementById("manage-token");
+const manageStatus = document.getElementById("manage-status");
 const rangeButtons = Array.from(document.querySelectorAll("[data-range]"));
 const csvImportForm = document.getElementById("csv-import-form");
 const csvFileInput = document.getElementById("csv-file");
@@ -42,10 +44,63 @@ const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
 const API_BASE = (configuredApiBase || (location.hostname === "aolabs.io" ? LIVE_API_BASE : "")).replace(/\/$/, "");
 const POLL_MS = 30 * 1000;
+const WRITE_TOKEN_STORAGE_KEY = "bloodWriteToken";
 
 let latestData = null;
 let activeRange = "7";
 let pollTimer = 0;
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function storedWriteToken() {
+  try {
+    return window.localStorage.getItem(WRITE_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberWriteToken(token) {
+  const clean = String(token || "").trim();
+  if (!clean) return;
+  try {
+    window.localStorage.setItem(WRITE_TOKEN_STORAGE_KEY, clean);
+  } catch {
+    // Private browsing may reject storage; current inputs still work.
+  }
+}
+
+function fillWriteTokenInputs(token) {
+  const clean = String(token || "").trim();
+  if (!clean) return;
+  [manageTokenInput, manualTokenInput, csvTokenInput].forEach((input) => {
+    if (input && !input.value) input.value = clean;
+  });
+}
+
+function currentWriteToken() {
+  return [
+    manageTokenInput?.value,
+    manualTokenInput?.value,
+    csvTokenInput?.value,
+    storedWriteToken()
+  ].map((value) => String(value || "").trim()).find(Boolean) || "";
+}
+
+function setManageState(message, busy = false) {
+  if (manageStatus) manageStatus.textContent = message;
+  readingsBody?.querySelectorAll("[data-disregard-id]").forEach((button) => {
+    button.disabled = busy;
+    button.toggleAttribute("aria-busy", busy);
+  });
+}
 
 function formatDateTime(value) {
   const date = new Date(value);
@@ -531,17 +586,21 @@ function renderAllCharts(data) {
 
 function renderTable(data) {
   const rows = [...(data?.readings || [])].slice(0, 14);
-  recordCount.textContent = `${data?.recordCount || 0} reading${data?.recordCount === 1 ? "" : "s"}`;
+  const ignored = Number(data?.ignoredCount || 0);
+  recordCount.textContent = `${data?.recordCount || 0} reading${data?.recordCount === 1 ? "" : "s"}${ignored ? `, ${ignored} disregarded` : ""}`;
   if (!rows.length) {
-    readingsBody.innerHTML = `<tr><td colspan="4">No readings reached Blood.</td></tr>`;
+    readingsBody.innerHTML = `<tr><td colspan="5">No readings reached Blood.</td></tr>`;
     return;
   }
   readingsBody.innerHTML = rows.map((reading) => `
     <tr>
-      <td>${formatDateTime(reading.measuredAt)}</td>
-      <td><strong>${reading.valueMgDl}</strong></td>
-      <td>${markerLabel(reading) || ""}</td>
-      <td>${sourceLabel(reading, true)}</td>
+      <td>${escapeHtml(formatDateTime(reading.measuredAt))}</td>
+      <td><strong>${escapeHtml(reading.valueMgDl)}</strong></td>
+      <td>${escapeHtml(markerLabel(reading) || "")}</td>
+      <td>${escapeHtml(sourceLabel(reading, true))}</td>
+      <td>
+        <button class="disregard-button" type="button" data-disregard-id="${escapeHtml(reading.readingId)}" data-disregard-label="${escapeHtml(`${reading.valueMgDl} mg/dL at ${formatDateTime(reading.measuredAt)}`)}">Disregard</button>
+      </td>
     </tr>
   `).join("");
 }
@@ -675,6 +734,60 @@ rangeButtons.forEach((button) => {
 
 refreshButton.addEventListener("click", () => loadSummary(true));
 
+fillWriteTokenInputs(storedWriteToken());
+[manageTokenInput, manualTokenInput, csvTokenInput].forEach((input) => {
+  input?.addEventListener("input", () => {
+    const token = input.value.trim();
+    if (!token) return;
+    [manageTokenInput, manualTokenInput, csvTokenInput].forEach((peer) => {
+      if (peer && peer !== input && !peer.value) peer.value = token;
+    });
+  });
+});
+
+readingsBody?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-disregard-id]");
+  if (!button) return;
+  const readingId = button.dataset.disregardId || "";
+  const label = button.dataset.disregardLabel || "this glucose reading";
+  const token = currentWriteToken();
+  if (!token) {
+    setManageState("Edit key required to disregard a reading.");
+    manageTokenInput?.focus();
+    return;
+  }
+  if (!window.confirm(`Disregard ${label}? This removes it from the graphs, current reading, anxiety score, and patterns.`)) {
+    return;
+  }
+
+  setManageState("Disregarding reading.", true);
+  try {
+    const response = await fetch(`${API_BASE}/api/blood/readings/${encodeURIComponent(readingId)}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ reason: "user_disregarded" })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `delete ${response.status}`);
+    }
+    rememberWriteToken(token);
+    fillWriteTokenInputs(token);
+    setManageState("Reading disregarded.");
+    await loadSummary(true);
+  } catch (error) {
+    setManageState(`Disregard failed: ${error.message || "not accepted"}.`);
+  } finally {
+    readingsBody?.querySelectorAll("[data-disregard-id]").forEach((item) => {
+      item.disabled = false;
+      item.removeAttribute("aria-busy");
+    });
+  }
+});
+
 function setCsvState(message, busy = false) {
   if (!csvStatus || !csvSubmit) return;
   csvStatus.textContent = message;
@@ -743,6 +856,8 @@ manualEntryForm?.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(result.error || `entry ${response.status}`);
     }
+    rememberWriteToken(token);
+    fillWriteTokenInputs(token);
     setManualState(`Added ${value} mg/dL.`);
     manualValueInput.value = "";
     if (manualTimeInput) manualTimeInput.value = localDateTimeValue();
@@ -783,6 +898,8 @@ csvImportForm?.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(result.error || `import ${response.status}`);
     }
+    rememberWriteToken(token);
+    fillWriteTokenInputs(token);
     setCsvState(`Imported ${result.accepted || 0} reading${result.accepted === 1 ? "" : "s"}.`);
     csvImportForm.reset();
     loadSummary(true);

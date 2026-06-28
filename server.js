@@ -83,6 +83,19 @@ function requireConfiguredToken(envName, purpose) {
   };
 }
 
+function isReadingDisregarded(reading) {
+  return Boolean(reading?.disregardedAt || reading?.disregarded);
+}
+
+function withPreservedDisregard(existing, incoming) {
+  if (!isReadingDisregarded(existing)) return incoming;
+  return {
+    ...incoming,
+    disregardedAt: existing.disregardedAt || new Date().toISOString(),
+    disregardedReason: existing.disregardedReason || "user_disregarded"
+  };
+}
+
 function parseTime(value, field) {
   const time = new Date(value);
   if (!value || Number.isNaN(time.getTime())) {
@@ -651,6 +664,49 @@ async function readReadings() {
   return readJsonReadings();
 }
 
+async function disregardReading(readingId, reason = "user_disregarded") {
+  const id = String(readingId || "").trim();
+  if (!id || id.length > 220) {
+    const error = new Error("invalid_reading_id");
+    error.status = 400;
+    throw error;
+  }
+
+  const disregardedAt = new Date().toISOString();
+  const cleanReason = String(reason || "user_disregarded").slice(0, 120);
+  const pool = await getPgPool();
+  if (pool) {
+    await ensureDb();
+    const result = await pool.query(`
+      UPDATE blood_readings
+      SET payload = payload || jsonb_build_object(
+        'disregardedAt', $2::text,
+        'disregardedReason', $3::text
+      ),
+      updated_at = now()
+      WHERE reading_id = $1
+      RETURNING payload
+    `, [id, disregardedAt, cleanReason]);
+    if (!result.rowCount) return null;
+    return result.rows[0].payload;
+  }
+
+  const readings = await readJsonReadings();
+  let updated = null;
+  const next = readings.map((reading) => {
+    if (reading.readingId !== id) return reading;
+    updated = {
+      ...reading,
+      disregardedAt,
+      disregardedReason: cleanReason
+    };
+    return updated;
+  });
+  if (!updated) return null;
+  await writeJsonReadings(next);
+  return updated;
+}
+
 async function readHealthMetrics() {
   const pool = await getPgPool();
   if (pool) {
@@ -679,7 +735,14 @@ async function storeReadings(readings) {
           DO UPDATE SET
             measured_at = EXCLUDED.measured_at,
             captured_at = EXCLUDED.captured_at,
-            payload = EXCLUDED.payload,
+            payload = CASE
+              WHEN blood_readings.payload->>'disregardedAt' IS NOT NULL
+                THEN EXCLUDED.payload || jsonb_build_object(
+                  'disregardedAt', blood_readings.payload->>'disregardedAt',
+                  'disregardedReason', COALESCE(blood_readings.payload->>'disregardedReason', 'user_disregarded')
+                )
+              ELSE EXCLUDED.payload
+            END,
             updated_at = now()
         `, [reading.readingId, reading.measuredAt, reading.capturedAt, reading]);
       }
@@ -695,7 +758,9 @@ async function storeReadings(readings) {
 
   const existing = await readJsonReadings();
   const byId = new Map(existing.map((reading) => [reading.readingId, reading]));
-  for (const reading of readings) byId.set(reading.readingId, reading);
+  for (const reading of readings) {
+    byId.set(reading.readingId, withPreservedDisregard(byId.get(reading.readingId), reading));
+  }
   const next = Array.from(byId.values())
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
     .slice(0, MAX_STORED_READINGS);
@@ -2346,7 +2411,7 @@ async function fetchSleepSummaryFallback() {
 }
 
 function summarizeReadings(readings, health = summarizeHealthMetrics()) {
-  const normalized = readings
+  const allReadable = readings
     .filter((reading) => reading?.measuredAt && Number.isFinite(Number(reading.valueMgDl)))
     .map((reading) => ({
       ...reading,
@@ -2354,6 +2419,8 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
     }))
     .filter((reading) => reading.readingDate >= PUBLIC_MIN_READING_DATE)
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
+  const ignoredCount = allReadable.filter(isReadingDisregarded).length;
+  const normalized = allReadable.filter((reading) => !isReadingDisregarded(reading));
   const healthWithDynamicAnxiety = recomputeHealthAnxietyWithDynamics({ health, readings: normalized });
   const anxietyTrend = estimateAnxietyTrend({ readings: normalized, health: healthWithDynamicAnxiety });
   const healthWithAnxietyTrend = {
@@ -2371,6 +2438,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       status: "waiting_for_contour_sync",
       generatedAt: new Date().toISOString(),
       recordCount: 0,
+      ignoredCount,
       latest: null,
       readings: [],
       trend: [],
@@ -2389,6 +2457,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
     status: "connected",
     generatedAt: new Date().toISOString(),
     recordCount: normalized.length,
+    ignoredCount,
     latest: normalized[0],
     lastCapturedAt: normalized
       .map((reading) => reading.capturedAt)
@@ -2440,6 +2509,24 @@ app.get("/api/blood/export", requireConfiguredToken("BLOOD_READ_TOKEN", "export"
       generatedAt: new Date().toISOString(),
       readings: await readReadings(),
       healthMetrics: await readHealthMetrics()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/blood/readings/:readingId", requireConfiguredToken("BLOOD_INGEST_TOKEN", "manage"), async (req, res, next) => {
+  try {
+    const reading = await disregardReading(req.params.readingId, req.body?.reason || "user_disregarded");
+    if (!reading) {
+      res.status(404).json({ ok: false, error: "reading_not_found" });
+      return;
+    }
+    res.json({
+      ok: true,
+      readingId: reading.readingId,
+      disregardedAt: reading.disregardedAt,
+      status: "disregarded"
     });
   } catch (error) {
     next(error);

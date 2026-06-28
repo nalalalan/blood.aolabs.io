@@ -44,6 +44,29 @@ test("summary keeps latest reading and ascending trend", () => {
   assert.deepEqual(summary.trend.map((reading) => reading.valueMgDl), [110, 130]);
 });
 
+test("summary disregards hidden glucose readings from latest and trend", () => {
+  const readings = sanitizePayload({
+    source: "test",
+    capturedAt: "2026-06-26T15:00:00.000Z",
+    readings: [
+      { measuredAt: "2026-06-26T12:00:00.000Z", valueMgDl: 110 },
+      { measuredAt: "2026-06-26T14:00:00.000Z", valueMgDl: 130 },
+      { measuredAt: "2026-06-26T16:00:00.000Z", valueMgDl: 210 }
+    ]
+  });
+  const ignoredLatest = readings.map((reading) => (
+    reading.valueMgDl === 210
+      ? { ...reading, disregardedAt: "2026-06-26T16:05:00.000Z", disregardedReason: "user_disregarded" }
+      : reading
+  ));
+  const summary = summarizeReadings(ignoredLatest);
+  assert.equal(summary.recordCount, 2);
+  assert.equal(summary.ignoredCount, 1);
+  assert.equal(summary.latest.valueMgDl, 130);
+  assert.deepEqual(summary.trend.map((reading) => reading.valueMgDl), [110, 130]);
+  assert.equal(summary.readings.some((reading) => reading.valueMgDl === 210), false);
+});
+
 test("empty summary names the automatic meter bridge boundary", () => {
   const summary = summarizeReadings([]);
   assert.equal(summary.status, "waiting_for_contour_sync");
