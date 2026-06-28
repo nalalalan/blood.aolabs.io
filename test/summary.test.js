@@ -7,6 +7,7 @@ const {
   sanitizePayload,
   currentTimeBlock,
   estimateAnxietyState,
+  estimateInstabilityPatterns,
   summarizeHealthMetrics,
   summarizeReadings
 } = require("../server");
@@ -224,4 +225,40 @@ test("blood recommendation actions stay positive and inside food water or moveme
     assert.match(action, allowed);
     assert.doesNotMatch(action, banned);
   }
+});
+
+test("instability patterns identify the strongest source-backed time block", () => {
+  const readings = sanitizePayload({
+    source: "test",
+    capturedAt: "2026-06-28T04:00:00.000Z",
+    readings: [
+      { measuredAt: "2026-06-27T02:05:00.000Z", valueMgDl: 160 },
+      { measuredAt: "2026-06-27T02:35:00.000Z", valueMgDl: 145 },
+      { measuredAt: "2026-06-27T16:05:00.000Z", valueMgDl: 96 },
+      { measuredAt: "2026-06-27T16:35:00.000Z", valueMgDl: 104 }
+    ]
+  });
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T04:00:00.000Z",
+    heartRate: [
+      { measuredAt: "2026-06-27T02:10:00.000Z", valueBpm: 106 },
+      { measuredAt: "2026-06-27T02:20:00.000Z", valueBpm: 104 },
+      { measuredAt: "2026-06-27T16:10:00.000Z", valueBpm: 68 }
+    ],
+    hrv: [{ measuredAt: "2026-06-27T02:30:00.000Z", rmssdMs: 18 }]
+  });
+  const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T16:35:00.000Z", valueMgDl: 104 });
+  const patterns = estimateInstabilityPatterns({
+    readings,
+    health,
+    now: new Date("2026-06-28T04:00:00.000Z")
+  });
+
+  assert.equal(patterns.status, "active");
+  assert.equal(patterns.currentBlock, "night");
+  assert.equal(patterns.prediction.block, "night");
+  assert.match(patterns.prediction.title, /night/);
+  assert.match(patterns.prediction.detail, /glucose|HR|HRV/);
+  assert.match(patterns.prediction.basis, /recalculates after each upload/);
 });

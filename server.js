@@ -1114,6 +1114,234 @@ function currentTimeBlock(hour = easternHour()) {
   return "night";
 }
 
+const TIME_BLOCKS = [
+  { key: "night", label: "night", range: "10 PM-5 AM" },
+  { key: "morning", label: "morning", range: "5-10 AM" },
+  { key: "midday", label: "midday", range: "10 AM-2 PM" },
+  { key: "afternoon", label: "afternoon", range: "2-6 PM" },
+  { key: "evening", label: "evening", range: "6-10 PM" }
+];
+
+const PATTERN_SOURCE_LABELS = {
+  glucose: "glucose",
+  heart_rate: "HR",
+  hrv: "HRV",
+  sleep: "sleep",
+  steps: "steps"
+};
+
+function timeBlockFromTimestamp(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return currentTimeBlock(easternHour(date));
+}
+
+function recencyWeight(measuredAt, now = new Date()) {
+  const ageDays = (now.getTime() - new Date(measuredAt).getTime()) / (24 * 60 * 60 * 1000);
+  if (!Number.isFinite(ageDays) || ageDays < 0) return 1;
+  return Math.max(0.55, 1 - (Math.min(ageDays, 45) / 45) * 0.45);
+}
+
+function patternScore(source, value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return { score: 0, reason: "" };
+
+  if (source === "glucose") {
+    if (number < 70) return { score: 1.0, reason: "glucose below range" };
+    if (number > 180) return { score: 0.9, reason: "glucose above range" };
+    if (number < 82 || number > 140) return { score: 0.35, reason: "glucose near range edge" };
+    return { score: 0, reason: "" };
+  }
+
+  if (source === "heart_rate") {
+    if (number >= 100) return { score: 0.85, reason: "HR elevated" };
+    if (number >= 85) return { score: 0.4, reason: "HR raised" };
+    return { score: 0, reason: "" };
+  }
+
+  if (source === "hrv") {
+    if (number < 25) return { score: 0.8, reason: "HRV low" };
+    if (number < 40) return { score: 0.45, reason: "HRV soft" };
+    return { score: 0, reason: "" };
+  }
+
+  if (source === "sleep") {
+    if (number < 300) return { score: 0.9, reason: "sleep short" };
+    if (number < 360) return { score: 0.45, reason: "sleep light" };
+    return { score: 0, reason: "" };
+  }
+
+  if (source === "steps") {
+    if (number < 1500) return { score: 0.35, reason: "steps low" };
+    if (number < 4000) return { score: 0.15, reason: "steps light" };
+    return { score: 0, reason: "" };
+  }
+
+  return { score: 0, reason: "" };
+}
+
+function hourlyMetricBuckets(metrics = [], type) {
+  const buckets = new Map();
+  for (const metric of metrics) {
+    if (metric?.type !== type || !metric.measuredAt) continue;
+    const value = Number(metric.value);
+    if (!Number.isFinite(value)) continue;
+    const date = new Date(metric.measuredAt);
+    if (Number.isNaN(date.getTime())) continue;
+    const hourKey = metric.measuredAt.slice(0, 13);
+    const bucket = buckets.get(hourKey) || { measuredAt: metric.measuredAt, values: [] };
+    bucket.values.push(value);
+    if (new Date(metric.measuredAt).getTime() > new Date(bucket.measuredAt).getTime()) {
+      bucket.measuredAt = metric.measuredAt;
+    }
+    buckets.set(hourKey, bucket);
+  }
+  return Array.from(buckets.values())
+    .map((bucket) => ({
+      measuredAt: bucket.measuredAt,
+      value: median(bucket.values)
+    }))
+    .filter((bucket) => Number.isFinite(Number(bucket.value)));
+}
+
+function buildPatternStats() {
+  return new Map(TIME_BLOCKS.map((block) => [block.key, {
+    block: block.key,
+    label: block.label,
+    range: block.range,
+    observations: 0,
+    weightTotal: 0,
+    weightedScore: 0,
+    unstableWeight: 0,
+    unstableCount: 0,
+    sourceCounts: {},
+    reasons: []
+  }]));
+}
+
+function addPatternObservation(stats, measuredAt, source, value, now) {
+  const block = timeBlockFromTimestamp(measuredAt);
+  if (!block || !stats.has(block)) return;
+  const result = patternScore(source, value);
+  const weight = recencyWeight(measuredAt, now);
+  const item = stats.get(block);
+  item.observations += 1;
+  item.weightTotal += weight;
+  item.weightedScore += result.score * weight;
+  if (result.score > 0) {
+    item.unstableWeight += weight;
+    item.unstableCount += 1;
+    item.sourceCounts[source] = (item.sourceCounts[source] || 0) + 1;
+    item.reasons.push({
+      source,
+      reason: result.reason,
+      measuredAt,
+      value: Number(value),
+      score: Number(result.score.toFixed(2))
+    });
+  }
+}
+
+function summarizePatternBlock(block) {
+  const averageScore = block.weightTotal ? block.weightedScore / block.weightTotal : 0;
+  const unstableShare = block.weightTotal ? block.unstableWeight / block.weightTotal : 0;
+  const sourceEntries = Object.entries(block.sourceCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([source, count]) => ({ source, label: PATTERN_SOURCE_LABELS[source] || source, count }));
+  const topSources = sourceEntries.slice(0, 3).map((source) => source.label);
+  const level = averageScore >= 0.45 || unstableShare >= 0.42
+    ? "high"
+    : averageScore >= 0.25 || unstableShare >= 0.25
+      ? "watch"
+      : averageScore >= 0.12 || unstableShare >= 0.12
+        ? "soft"
+        : "stable";
+  return {
+    block: block.block,
+    label: block.label,
+    range: block.range,
+    level,
+    observations: block.observations,
+    unstableCount: block.unstableCount,
+    averageScore: Number(averageScore.toFixed(2)),
+    unstableShare: Number(unstableShare.toFixed(2)),
+    sources: sourceEntries,
+    topSources,
+    reasons: block.reasons
+      .sort((a, b) => b.score - a.score || new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
+      .slice(0, 4)
+  };
+}
+
+function estimateInstabilityPatterns({ readings = [], health = {}, now = new Date() } = {}) {
+  const stats = buildPatternStats();
+  const cutoff = now.getTime() - 45 * 24 * 60 * 60 * 1000;
+  const recentEnough = (value) => {
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) && time >= cutoff && time <= now.getTime() + 60_000;
+  };
+
+  for (const reading of readings) {
+    if (!recentEnough(reading.measuredAt)) continue;
+    addPatternObservation(stats, reading.measuredAt, "glucose", reading.valueMgDl, now);
+  }
+
+  const trends = health?.trends || {};
+  for (const metric of hourlyMetricBuckets(trends.heartRate || [], "heart_rate")) {
+    if (!recentEnough(metric.measuredAt)) continue;
+    addPatternObservation(stats, metric.measuredAt, "heart_rate", metric.value, now);
+  }
+  for (const metric of trends.hrv || []) {
+    if (!recentEnough(metric.measuredAt)) continue;
+    addPatternObservation(stats, metric.measuredAt, "hrv", metric.value, now);
+  }
+  for (const metric of trends.sleep || []) {
+    if (!recentEnough(metric.measuredAt)) continue;
+    addPatternObservation(stats, metric.measuredAt, "sleep", metric.value, now);
+  }
+  for (const metric of trends.steps || []) {
+    if (!recentEnough(metric.measuredAt)) continue;
+    addPatternObservation(stats, metric.measuredAt, "steps", metric.value, now);
+  }
+
+  const blocks = Array.from(stats.values()).map(summarizePatternBlock);
+  const totalObservations = blocks.reduce((sum, block) => sum + block.observations, 0);
+  const ranked = [...blocks]
+    .filter((block) => block.observations >= 2)
+    .sort((a, b) => b.averageScore - a.averageScore || b.unstableShare - a.unstableShare || b.observations - a.observations);
+  const prediction = ranked.find((block) => block.unstableCount > 0) || null;
+  const currentBlockKey = currentTimeBlock(easternHour(now));
+  const current = blocks.find((block) => block.block === currentBlockKey) || null;
+  const active = Boolean(prediction && totalObservations >= 6);
+  const sourceText = prediction?.topSources?.length ? prediction.topSources.join(" + ") : "Source";
+  const predictionDetail = prediction
+    ? `${prediction.range} had ${prediction.unstableCount} flagged samples out of ${prediction.observations}; strongest sources: ${sourceText}.`
+    : null;
+  const predictionBasis = prediction
+    ? `${prediction.observations} source samples in the 45-day rolling window; recalculates after each upload.`
+    : `${totalObservations} source samples so far; recalculates after each upload.`;
+
+  return {
+    status: active ? "active" : "learning",
+    generatedAt: now.toISOString(),
+    windowDays: 45,
+    currentBlock: currentBlockKey,
+    current,
+    prediction: prediction ? {
+      ...prediction,
+      title: `Unstable window: ${prediction.label}`,
+      detail: predictionDetail,
+      basis: predictionBasis
+    } : null,
+    title: active ? `Unstable window: ${prediction.label}` : "Pattern: learning",
+    detail: active
+      ? predictionDetail
+      : "Need more time-stamped glucose and health samples.",
+    basis: predictionBasis,
+    blocks
+  };
+}
+
 function pushFactor(factors, key, label, points, reason, action) {
   if (!Number.isFinite(points) || points === 0) return;
   factors.push({ key, label, points: Number(points.toFixed(2)), reason, action });
@@ -1305,6 +1533,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
     }))
     .filter((reading) => reading.readingDate >= PUBLIC_MIN_READING_DATE)
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
+  const patterns = estimateInstabilityPatterns({ readings: normalized, health });
 
   if (!normalized.length) {
     return {
@@ -1317,6 +1546,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       trend: [],
       days: [],
       health,
+      patterns,
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
       message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, sleep, and steps, and Blood estimates HRV from sleep/rest heart-rate samples."
     };
@@ -1342,6 +1572,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       avgMgDl: average(values)
     },
     health,
+    patterns,
     readings: normalized.slice(0, 30),
     trend: trendDesc.reverse(),
     days: dayStats(normalized).slice(0, 45)
@@ -1509,6 +1740,7 @@ module.exports = {
   sanitizeHealthPayload,
   summarizeHealthMetrics,
   estimateAnxietyState,
+  estimateInstabilityPatterns,
   currentTimeBlock,
   summarizeReadings
 };

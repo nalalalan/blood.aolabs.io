@@ -24,6 +24,7 @@ Current bridge/UI boundary:
 - A direct Samsung Health current-feed path would require the proprietary Samsung Health Data SDK or a separate watch sensor bridge; the current Blood Bridge reads the Health Connect copy.
 
 Anxiety score source function: `server.js::estimateAnxietyState`.
+Time-pattern source function: `server.js::estimateInstabilityPatterns`.
 
 Calculation:
 
@@ -66,3 +67,5 @@ Suggestion timing is deliberately simple current-block labeling, not delay sched
 - 10 PM to before 5 AM ET: night
 
 The suggestion action is taken from the strongest positive current factor and written as source reason plus one positive eating, drinking, or movement action. If no positive factor exists, Blood returns a water/food/movement action. The visible suggestion must name the triggering metric, value or freshness boundary, and concrete behavior so it does not read like a disconnected wellness fragment. Blood recommendations do not restrict exercise and do not use phone, breathing, task-switching, focus, or work-management language.
+
+The top pattern surface groups recent source records by Eastern time block: morning, midday, afternoon, evening, and night. It scores glucose, HR, HRV, sleep, and steps with the same bounded instability factors used by the current estimate, reduces dense heart-rate records to hourly median buckets, and reports the block with the strongest recent instability pattern. The rolling window is 45 days, and the pattern is recomputed from stored source records on each summary API response so it changes as additional bridge data arrives.

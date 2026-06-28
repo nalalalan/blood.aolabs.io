@@ -34,6 +34,9 @@ const metricSteps = document.getElementById("metric-steps");
 const suggestionTime = document.getElementById("suggestion-time");
 const suggestionAction = document.getElementById("suggestion-action");
 const suggestionReason = document.getElementById("suggestion-reason");
+const patternTitle = document.getElementById("pattern-title");
+const patternDetail = document.getElementById("pattern-detail");
+const patternBasis = document.getElementById("pattern-basis");
 
 const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
@@ -482,6 +485,20 @@ function setMetricValue(element, value) {
   element.classList.toggle("is-waiting", !value);
 }
 
+function renderPatterns(data) {
+  const patterns = data?.patterns || {};
+  const prediction = patterns.prediction || null;
+  if (patternTitle) {
+    patternTitle.textContent = patterns.title || prediction?.title || "Pattern: learning";
+  }
+  if (patternDetail) {
+    patternDetail.textContent = patterns.detail || prediction?.detail || "Need more time-stamped glucose and health samples.";
+  }
+  if (patternBasis) {
+    patternBasis.textContent = patterns.basis || prediction?.basis || "Recalculates after each upload.";
+  }
+}
+
 function renderHealth(data) {
   const health = data?.health || {};
   const latest = health.latest || {};
@@ -506,6 +523,7 @@ function renderHealth(data) {
   if (freshnessLine) {
     freshnessLine.textContent = sourceFreshnessText(data);
   }
+  renderPatterns(data);
 
   setMetricValue(metricGlucose, glucose?.valueMgDl ? `${glucose.valueMgDl} mg/dL` : "");
   setMetricValue(metricHr, heartRate?.value ? `${heartRate.value} bpm` : "");
