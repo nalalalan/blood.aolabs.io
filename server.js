@@ -60,6 +60,21 @@ function extractToken(req) {
   ).trim();
 }
 
+function tokensMatch(expected, actual) {
+  const expectedBuffer = Buffer.from(String(expected || ""));
+  const actualBuffer = Buffer.from(String(actual || ""));
+  return expectedBuffer.length === actualBuffer.length &&
+    crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function configuredEditKey() {
+  return process.env.BLOOD_EDIT_KEY || "031120";
+}
+
+function editKeyMatches(actual) {
+  return tokensMatch(configuredEditKey(), actual);
+}
+
 function requireConfiguredToken(envName, purpose) {
   return (req, res, next) => {
     const expected = process.env[envName];
@@ -69,18 +84,22 @@ function requireConfiguredToken(envName, purpose) {
     }
 
     const actual = extractToken(req);
-    const expectedBuffer = Buffer.from(expected);
-    const actualBuffer = Buffer.from(actual);
-    const matches = expectedBuffer.length === actualBuffer.length &&
-      crypto.timingSafeEqual(expectedBuffer, actualBuffer);
-
-    if (!matches) {
+    if (!tokensMatch(expected, actual)) {
       res.status(401).json({ ok: false, error: "unauthorized", purpose });
       return;
     }
 
     next();
   };
+}
+
+function requireEditKey(req, res, next) {
+  const actual = extractToken(req);
+  if (!editKeyMatches(actual)) {
+    res.status(401).json({ ok: false, error: "unauthorized", purpose: "edit" });
+    return;
+  }
+  next();
 }
 
 function isReadingDisregarded(reading) {
@@ -2515,7 +2534,7 @@ app.get("/api/blood/export", requireConfiguredToken("BLOOD_READ_TOKEN", "export"
   }
 });
 
-app.delete("/api/blood/readings/:readingId", requireConfiguredToken("BLOOD_INGEST_TOKEN", "manage"), async (req, res, next) => {
+app.delete("/api/blood/readings/:readingId", requireEditKey, async (req, res, next) => {
   try {
     const reading = await disregardReading(req.params.readingId, req.body?.reason || "user_disregarded");
     if (!reading) {
@@ -2659,6 +2678,7 @@ module.exports = {
   estimateAnxietyState,
   estimateAnxietyTrend,
   estimateInstabilityPatterns,
+  editKeyMatches,
   currentTimeBlock,
   summarizeReadings
 };

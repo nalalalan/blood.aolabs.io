@@ -8,6 +8,7 @@ const {
   currentTimeBlock,
   estimateAnxietyState,
   estimateInstabilityPatterns,
+  editKeyMatches,
   summarizeHealthMetrics,
   estimateAnxietyTrend,
   summarizeReadings
@@ -42,6 +43,22 @@ test("summary keeps latest reading and ascending trend", () => {
   assert.equal(summary.status, "connected");
   assert.equal(summary.latest.valueMgDl, 130);
   assert.deepEqual(summary.trend.map((reading) => reading.valueMgDl), [110, 130]);
+});
+
+test("default edit key is the fixed Blood disregard key", () => {
+  const previous = process.env.BLOOD_EDIT_KEY;
+  delete process.env.BLOOD_EDIT_KEY;
+  try {
+    assert.equal(editKeyMatches("031120"), true);
+    assert.equal(editKeyMatches("31120"), false);
+    assert.equal(editKeyMatches("wrong"), false);
+  } finally {
+    if (previous == null) {
+      delete process.env.BLOOD_EDIT_KEY;
+    } else {
+      process.env.BLOOD_EDIT_KEY = previous;
+    }
+  }
 });
 
 test("summary disregards hidden glucose readings from latest and trend", () => {

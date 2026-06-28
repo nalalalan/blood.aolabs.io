@@ -45,6 +45,8 @@ const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?
 const API_BASE = (configuredApiBase || (location.hostname === "aolabs.io" ? LIVE_API_BASE : "")).replace(/\/$/, "");
 const POLL_MS = 30 * 1000;
 const WRITE_TOKEN_STORAGE_KEY = "bloodWriteToken";
+const EDIT_KEY_STORAGE_KEY = "bloodEditKey";
+const DEFAULT_EDIT_KEY = "031120";
 
 let latestData = null;
 let activeRange = "7";
@@ -67,6 +69,14 @@ function storedWriteToken() {
   }
 }
 
+function storedEditKey() {
+  try {
+    return window.localStorage.getItem(EDIT_KEY_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 function rememberWriteToken(token) {
   const clean = String(token || "").trim();
   if (!clean) return;
@@ -77,21 +87,31 @@ function rememberWriteToken(token) {
   }
 }
 
+function rememberEditKey(token) {
+  const clean = String(token || "").trim();
+  if (!clean) return;
+  try {
+    window.localStorage.setItem(EDIT_KEY_STORAGE_KEY, clean);
+  } catch {
+    // Private browsing may reject storage; the default edit key still works.
+  }
+}
+
 function fillWriteTokenInputs(token) {
   const clean = String(token || "").trim();
   if (!clean) return;
-  [manageTokenInput, manualTokenInput, csvTokenInput].forEach((input) => {
+  [manualTokenInput, csvTokenInput].forEach((input) => {
     if (input && !input.value) input.value = clean;
   });
 }
 
-function currentWriteToken() {
-  return [
-    manageTokenInput?.value,
-    manualTokenInput?.value,
-    csvTokenInput?.value,
-    storedWriteToken()
-  ].map((value) => String(value || "").trim()).find(Boolean) || "";
+function fillEditKeyInput(token) {
+  const clean = String(token || "").trim();
+  if (manageTokenInput) manageTokenInput.value = clean || DEFAULT_EDIT_KEY;
+}
+
+function currentEditKey() {
+  return String(manageTokenInput?.value || storedEditKey() || DEFAULT_EDIT_KEY).trim();
 }
 
 function setManageState(message, busy = false) {
@@ -262,6 +282,45 @@ function filteredTrend(data) {
   const days = Number.parseInt(activeRange, 10);
   const cutoff = days === 1 ? Date.now() - 24 * 60 * 60 * 1000 : daysAgo(days);
   return trend.filter((reading) => new Date(reading.measuredAt).getTime() >= cutoff);
+}
+
+function rangeDurationMs() {
+  if (activeRange === "all") return null;
+  const days = Number.parseInt(activeRange, 10);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return days * 24 * 60 * 60 * 1000;
+}
+
+function selectedTimeWindow(seriesList) {
+  const allTimes = seriesList
+    .flatMap((series) => series.points || [])
+    .map(pointPlotTime)
+    .filter((time) => Number.isFinite(time) && time > 0);
+  if (!allTimes.length) return null;
+  const max = Math.max(...allTimes);
+  if (activeRange === "all") {
+    return { min: Math.min(...allTimes), max };
+  }
+  const duration = rangeDurationMs();
+  return duration ? { min: max - duration, max } : { min: Math.min(...allTimes), max };
+}
+
+function visibleSeriesPoints(points, window) {
+  if (!window) return [];
+  return points.filter((point) => {
+    const time = pointPlotTime(point);
+    return time >= window.min && time <= window.max;
+  });
+}
+
+function lineSeriesPoints(points, visiblePoints, window, key) {
+  if (!window || activeRange === "all" || !["sleep", "steps"].includes(key)) return visiblePoints;
+  const before = [...points].reverse().find((point) => pointPlotTime(point) < window.min);
+  const after = points.find((point) => pointPlotTime(point) > window.max);
+  return [before, ...visiblePoints, after]
+    .filter(Boolean)
+    .filter((point, index, list) => list.findIndex((item) => item === point) === index)
+    .sort((a, b) => pointPlotTime(a) - pointPlotTime(b));
 }
 
 function renderBoundary(message, detail = "") {
@@ -453,10 +512,16 @@ function formatAxisValue(value, unit) {
 }
 
 function renderAllCharts(data) {
-  const seriesList = buildSeries(data).map((series) => ({
-    ...series,
-    visiblePoints: filterSeriesPoints(series.points)
-  }));
+  const builtSeries = buildSeries(data);
+  const timeWindow = selectedTimeWindow(builtSeries);
+  const seriesList = builtSeries.map((series) => {
+    const visiblePoints = visibleSeriesPoints(series.points, timeWindow);
+    return {
+      ...series,
+      visiblePoints,
+      linePoints: lineSeriesPoints(series.points, visiblePoints, timeWindow, series.key)
+    };
+  });
   const allPoints = seriesList.flatMap((series) => series.visiblePoints);
   if (!allPoints.length) {
     renderBoundary(
@@ -490,8 +555,8 @@ function renderAllCharts(data) {
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
   const times = allPoints.map(pointPlotTime);
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
+  const minTime = timeWindow?.min ?? Math.min(...times);
+  const maxTime = timeWindow?.max ?? Math.max(...times);
   const timeDomain = Math.max(1, maxTime - minTime);
   const xFor = (time) => pad.left + ((time - minTime) / timeDomain) * plotWidth;
   const xTickTimes = [minTime, minTime + timeDomain / 2, maxTime]
@@ -499,19 +564,21 @@ function renderAllCharts(data) {
 
   charts.innerHTML = seriesList.map((series) => {
     const points = series.visiblePoints;
-    const values = points.map((point) => Number(point.value));
+    const linePoints = series.linePoints || points;
+    const valuePoints = linePoints.length ? linePoints : points;
+    const values = valuePoints.map((point) => Number(point.value));
     const minValue = Math.min(series.yFloor, ...values) - (series.key === "steps" ? 0 : series.key === "sleep" ? 0 : 5);
     const maxValue = Math.max(series.yCeil, ...values) + (series.key === "steps" ? 0 : series.key === "sleep" ? 0 : 5);
     const valueDomain = Math.max(1, maxValue - minValue);
     const yFor = (value) => pad.top + plotHeight - ((value - minValue) / valueDomain) * plotHeight;
-    const line = points
+    const line = linePoints
       .map((point, index) => {
         const command = index === 0 ? "M" : "L";
         return `${command} ${xFor(pointPlotTime(point)).toFixed(1)} ${yFor(point.value).toFixed(1)}`;
       })
       .join(" ");
-    const area = points.length > 1
-      ? `${line} L ${xFor(pointPlotTime(points[points.length - 1])).toFixed(1)} ${yFor(minValue).toFixed(1)} L ${xFor(pointPlotTime(points[0])).toFixed(1)} ${yFor(minValue).toFixed(1)} Z`
+    const area = linePoints.length > 1
+      ? `${line} L ${xFor(pointPlotTime(linePoints[linePoints.length - 1])).toFixed(1)} ${yFor(minValue).toFixed(1)} L ${xFor(pointPlotTime(linePoints[0])).toFixed(1)} ${yFor(minValue).toFixed(1)} Z`
       : "";
     const ticks = series.ticks
       .filter((value) => value >= minValue && value <= maxValue)
@@ -554,10 +621,11 @@ function renderAllCharts(data) {
     const band = series.reference
       ? `<rect class="reference-band" x="${pad.left}" y="${Math.min(yFor(series.reference[0]), yFor(series.reference[1])).toFixed(1)}" width="${plotWidth}" height="${Math.abs(yFor(series.reference[0]) - yFor(series.reference[1])).toFixed(1)}"></rect>`
       : "";
-    const pathMarkup = points.length
+    const clipId = `clip-${series.key}-${activeRange}`;
+    const pathMarkup = points.length || linePoints.length > 1
       ? `
-        ${area ? `<path class="trend-area ${series.key}" d="${area}"></path>` : ""}
-        ${points.length > 1 ? `<path class="trend-line ${series.key}" d="${line}"></path>` : ""}
+        ${area ? `<path class="trend-area ${series.key}" d="${area}" clip-path="url(#${clipId})"></path>` : ""}
+        ${linePoints.length > 1 ? `<path class="trend-line ${series.key}" d="${line}" clip-path="url(#${clipId})"></path>` : ""}
         ${circles}
       `
       : `<text class="empty-series" x="${pad.left}" y="${pad.top + plotHeight / 2}">${series.empty}</text>`;
@@ -572,6 +640,11 @@ function renderAllCharts(data) {
           </span>
         </div>
         <svg viewBox="0 0 ${width} ${height}" class="metric-chart" aria-hidden="true">
+          <defs>
+            <clipPath id="${clipId}">
+              <rect x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}"></rect>
+            </clipPath>
+          </defs>
           <rect class="plot-bg" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}"></rect>
           ${band}
           ${ticks}
@@ -734,12 +807,16 @@ rangeButtons.forEach((button) => {
 
 refreshButton.addEventListener("click", () => loadSummary(true));
 
+fillEditKeyInput(storedEditKey() || DEFAULT_EDIT_KEY);
 fillWriteTokenInputs(storedWriteToken());
-[manageTokenInput, manualTokenInput, csvTokenInput].forEach((input) => {
+manageTokenInput?.addEventListener("input", () => {
+  rememberEditKey(manageTokenInput.value.trim() || DEFAULT_EDIT_KEY);
+});
+[manualTokenInput, csvTokenInput].forEach((input) => {
   input?.addEventListener("input", () => {
     const token = input.value.trim();
     if (!token) return;
-    [manageTokenInput, manualTokenInput, csvTokenInput].forEach((peer) => {
+    [manualTokenInput, csvTokenInput].forEach((peer) => {
       if (peer && peer !== input && !peer.value) peer.value = token;
     });
   });
@@ -750,7 +827,7 @@ readingsBody?.addEventListener("click", async (event) => {
   if (!button) return;
   const readingId = button.dataset.disregardId || "";
   const label = button.dataset.disregardLabel || "this glucose reading";
-  const token = currentWriteToken();
+  const token = currentEditKey();
   if (!token) {
     setManageState("Edit key required to disregard a reading.");
     manageTokenInput?.focus();
@@ -774,8 +851,8 @@ readingsBody?.addEventListener("click", async (event) => {
     if (!response.ok) {
       throw new Error(result.error || `delete ${response.status}`);
     }
-    rememberWriteToken(token);
-    fillWriteTokenInputs(token);
+    rememberEditKey(token);
+    fillEditKeyInput(token);
     setManageState("Reading disregarded.");
     await loadSummary(true);
   } catch (error) {

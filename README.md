@@ -2,7 +2,7 @@
 
 Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, sleep, and steps. Blood estimates HRV from sleep/rest heart-rate samples when true HRV/RMSSD is unavailable.
 
-The public page renders a compact anxiety estimate, a plain-English overall condition read, a watchout pattern, and six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. The score uses latest uploaded values plus recent source history, so quick glucose drops/rises, HR rises, and HRV dips can affect the score before the endpoint alone explains the state. Estimated HRV is shown as a Blood estimate by default; its absolute value is not treated like a true RMSSD threshold unless a true source HRV record exists. The shared x-axis ends at the newest current upload endpoint, so current latest-upload values sit on the right edge while labels keep their true source times. Steps are daily Samsung-style totals: the current day accumulates as newer uploads arrive, and the next day starts a separate total. The current-readings section gives glucose, HR, HRV, sleep, and steps equal visual weight. Sleep stays visible as history; old sleep does not drive the current action, and sleep is never selected as the visible recommendation source. Viewing the graph is public so it works from any device; writing records requires the ingest token.
+The public page renders a compact anxiety estimate, a plain-English overall condition read, a watchout pattern, and six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. The score uses latest uploaded values plus recent source history, so quick glucose drops/rises, HR rises, and HRV dips can affect the score before the endpoint alone explains the state. Estimated HRV is shown as a Blood estimate by default; its absolute value is not treated like a true RMSSD threshold unless a true source HRV record exists. The shared x-axis ends at the newest current upload endpoint, so current latest-upload values sit on the right edge while labels keep their true source times. In short ranges such as 24h, sleep and steps borrow adjacent daily context points for the clipped line path so they read like zoomed trend lines rather than isolated dots. Steps are daily Samsung-style totals: the current day accumulates as newer uploads arrive, and the next day starts a separate total. The current-readings section gives glucose, HR, HRV, sleep, and steps equal visual weight. Sleep stays visible as history; old sleep does not drive the current action, and sleep is never selected as the visible recommendation source. Viewing the graph is public so it works from any device; Disregard uses the Blood edit key `031120`; bridge, manual, and CSV writes still require the ingest token.
 
 ## Data path
 
@@ -114,11 +114,16 @@ Public. Used by the website on any device.
 
 Authorization: `Bearer $BLOOD_READ_TOKEN` when raw export access is needed.
 
+`DELETE /api/blood/readings/:readingId`
+
+Authorization: `Bearer 031120`. Soft-disregards one glucose reading from public Blood calculations while preserving the protected raw record/export history.
+
 ## Railway
 
 Set these variables on the Railway service:
 
 - `BLOOD_INGEST_TOKEN`
+- `BLOOD_EDIT_KEY=031120` optional; the server default is `031120`.
 - `BLOOD_READ_TOKEN` only for raw export access; the website summary is public.
 - `BLOOD_ALLOWED_ORIGINS=https://blood.aolabs.io,https://aolabs.io`
 - `DATABASE_URL` from a Railway Postgres service, or `DATA_DIR=/data` with a persistent volume
