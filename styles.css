@@ -179,6 +179,10 @@ button {
   gap: 20px;
 }
 
+.surface-head {
+  margin-bottom: 12px;
+}
+
 h1,
 h2,
 p {
@@ -210,14 +214,14 @@ h2 {
 .sync-section p,
 .import-section p {
   max-width: 690px;
-  margin-top: 8px;
+  margin-top: 0;
   font-size: 15px;
   font-weight: 560;
 }
 
 .surface-head .freshness-line {
   max-width: 840px;
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--blood-dark);
   font-size: 13px;
   font-weight: 740;
