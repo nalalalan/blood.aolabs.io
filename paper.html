@@ -7,7 +7,7 @@
   <meta name="description" content="Blood paper explaining the personal anxiety score and HRV estimate.">
   <link rel="canonical" href="https://blood.aolabs.io/paper">
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20260627-blood-paper-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260628-latest-upload-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood paper navigation">
@@ -37,7 +37,7 @@
 
     <article class="paper-doc">
       <h2>Abstract</h2>
-      <p>Blood turns automatic CONTOUR NEXT ONE glucose readings and Samsung/Health Connect heart rate, HRV, sleep, and steps into one visible stabilization score followed by a learned instability pattern and five aligned graphs. The anxiety estimate is not a diagnosis. It starts from a fixed raw baseline, adds or subtracts current source factors, scales the result to one decimal on a 1-10 range, and selects a stabilizing action from the strongest current outlier.</p>
+      <p>Blood turns automatic CONTOUR NEXT ONE glucose readings and Samsung/Health Connect heart rate, HRV, sleep, and steps into one visible stabilization score followed by a learned instability pattern and six aligned graphs: anxiety, glucose, HR, HRV, sleep, and steps. The anxiety estimate is not a diagnosis. It starts from a fixed raw baseline, adds or subtracts latest uploaded source factors, scales the result to one decimal on a 1-10 range, and selects a stabilizing food, water, or movement action from the strongest high, low, short, light, or raised signal.</p>
 
       <h2>Current formula</h2>
       <p>Raw starts at 2.2. Stable glucose, calm heart rate, solid sleep, and high recent steps subtract from the score. Low glucose, high glucose, high heart rate, low HRV, short sleep, and low movement add to it. The visible score is <code>clamp(1, 10, raw * 2)</code>, rounded to one decimal place.</p>
@@ -45,14 +45,17 @@
       <h2>Current live example</h2>
       <p>The June 27, 2026 live read reconstructs as 4.4/10: 82 mg/dL glucose, 68 bpm heart rate, 12 ms estimated HRV from sleep heart-rate samples, 431 minutes asleep, and 13,028 recent steps.</p>
 
-      <h2>Current block</h2>
-      <p>Blood names the current time block, the source reason, and one positive eating, drinking, or movement action from the strongest current outlier.</p>
+      <h2>Latest upload action</h2>
+      <p>Blood names the source reason and one positive eating, drinking, or movement action from the latest uploaded source state. The action does not use a live moment label because the phone bridge and Health Connect upload can lag behind the moment the page is opened.</p>
 
       <h2>Pattern window</h2>
-      <p>The top surface groups recent glucose, HR, HRV, sleep, and step records by Eastern time block, scores source instability with the same bounded factors used by the current estimate, and shows the block with the strongest recent pattern. The prediction recalculates from the latest uploads instead of using a fixed schedule.</p>
+      <p>The top surface groups recent glucose, HR, HRV, sleep, and step records by Eastern time block, scores source states as too high, too low, near an edge, short, light, or raised, and shows the block with the strongest recent pattern. The prediction recalculates from the latest uploads instead of using a fixed schedule.</p>
+
+      <h2>Anxiety graph</h2>
+      <p>The anxiety graph reconstructs historical score points from stored glucose and health samples, then appends the latest score as the newest point. It uses the same time axis as the five source graphs, producing six aligned graphs total.</p>
 
       <h2>Boundary</h2>
-      <p>Heart rate is current only when the health bridge uploads and Samsung/Health Connect exposes current samples, so Blood shows both the health-upload time and source sample time. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from dense low-noise sleep/rest heart-rate windows and labels the result as estimated. This paper is a system record, not medical advice.</p>
+      <p>Heart rate is current only when the health bridge uploads and Samsung/Health Connect exposes current samples, so Blood shows both the health-upload time and source sample time. True HRV is used when source RMSSD exists. Otherwise Blood estimates HRV from independent dense low-noise sleep/rest heart-rate windows, rejects noisy segments, and labels the result as estimated. This paper is a system record, not medical advice.</p>
     </article>
   </main>
 </body>

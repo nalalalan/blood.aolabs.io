@@ -1,4 +1,4 @@
-const CACHE_NAME = "blood-aolabs-20260628-titleless-v1";
+const CACHE_NAME = "blood-aolabs-20260628-latest-upload-v1";
 const ASSETS = [
   "./",
   "./index.html",

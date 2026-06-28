@@ -180,7 +180,8 @@ button {
 }
 
 .surface-head {
-  margin-bottom: 12px;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
 h1,
@@ -215,16 +216,17 @@ h2 {
 .import-section p {
   max-width: 690px;
   margin-top: 0;
-  font-size: 15px;
-  font-weight: 560;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 640;
 }
 
 .surface-head .freshness-line {
   max-width: 840px;
-  margin-top: 4px;
+  margin-top: 3px;
   color: var(--blood-dark);
   font-size: 13px;
-  font-weight: 740;
+  font-weight: 720;
 }
 
 #refresh-button,
@@ -246,8 +248,10 @@ h2 {
 }
 
 #refresh-button {
-  min-width: 94px;
-  padding: 10px 14px;
+  min-width: 82px;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 13px;
   font-weight: 720;
 }
 
@@ -334,10 +338,14 @@ h2 {
 
 .anxiety-strip {
   display: grid;
-  grid-template-columns: minmax(160px, .42fr) minmax(0, .95fr) minmax(0, .82fr);
-  gap: 12px;
+  grid-template-columns: minmax(150px, .42fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
   align-items: stretch;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid rgba(73, 55, 51, .14);
+  border-radius: 8px;
+  background: #fffdf8;
 }
 
 .health-strip {
@@ -353,23 +361,24 @@ h2 {
 .health-suggestion,
 .pattern-card {
   min-width: 0;
-  border: 1px solid rgba(73, 55, 51, .13);
-  border-radius: 8px;
-  background: #fffdf8;
+  background: transparent;
 }
 
 .anxiety-readout {
   display: grid;
-  align-content: center;
-  gap: 4px;
-  padding: 12px;
+  align-content: start;
+  gap: 6px;
+  padding: 14px 16px;
 }
 
 .anxiety-readout span,
-.health-metrics span {
+.health-metrics span,
+.health-suggestion strong,
+.pattern-card strong {
   color: #5d514e;
   font-size: 11px;
   font-weight: 820;
+  line-height: 1.05;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -382,8 +391,8 @@ h2 {
 }
 
 .anxiety-readout strong {
-  font-size: clamp(46px, 7vw, 76px);
-  line-height: .9;
+  font-size: clamp(38px, 4.4vw, 54px);
+  line-height: .92;
   font-weight: 820;
   font-variant-numeric: tabular-nums;
 }
@@ -394,14 +403,21 @@ h2 {
 }
 
 .anxiety-readout small {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
 }
 
-.anxiety-readout p {
+.anxiety-readout p,
+.health-suggestion small,
+.pattern-card small {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 690;
+  line-height: 1.3;
+  font-weight: 680;
+}
+
+.health-suggestion small {
+  display: none;
 }
 
 .health-metrics {
@@ -439,65 +455,39 @@ h2 {
 
 .health-suggestion {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 10px 14px;
-  align-items: center;
-  padding: 14px;
-}
-
-.health-suggestion strong {
-  color: var(--blood-dark);
-  font-size: 18px;
-  line-height: 1.05;
-  font-weight: 800;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 18px;
+  border-left: 1px solid rgba(73, 55, 51, .12);
 }
 
 .health-suggestion span {
   color: var(--ink);
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 1.25;
   font-weight: 760;
-}
-
-.health-suggestion small {
-  grid-column: 2;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 690;
 }
 
 .pattern-card {
   display: grid;
-  align-content: center;
-  gap: 7px;
-  padding: 14px;
-}
-
-.pattern-card strong {
-  color: var(--blood-dark);
-  font-size: 18px;
-  line-height: 1.05;
-  font-weight: 820;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 18px;
+  border-left: 1px solid rgba(73, 55, 51, .12);
 }
 
 .pattern-card span {
   color: var(--ink);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.25;
   font-weight: 760;
-}
-
-.pattern-card small {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.25;
-  font-weight: 690;
 }
 
 .range-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .range-controls button {
@@ -625,6 +615,11 @@ h2 {
   stroke-linejoin: round;
 }
 
+.trend-line.anxiety,
+.point.anxiety {
+  stroke: #7a2439;
+}
+
 .trend-line.heart-rate,
 .point.heart-rate {
   stroke: var(--teal);
@@ -643,6 +638,10 @@ h2 {
 .trend-line.steps,
 .point.steps {
   stroke: #4f6f3f;
+}
+
+.trend-area.anxiety {
+  fill: rgba(122, 36, 57, .08);
 }
 
 .trend-area.heart-rate {
@@ -1015,6 +1014,18 @@ tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
 
+  .anxiety-readout,
+  .health-suggestion,
+  .pattern-card {
+    padding: 12px;
+  }
+
+  .health-suggestion,
+  .pattern-card {
+    border-top: 1px solid rgba(73, 55, 51, .12);
+    border-left: 0;
+  }
+
   .health-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1030,14 +1041,6 @@ tbody tr:last-child td {
 
   .health-metrics div:nth-child(even) {
     border-left: 1px solid rgba(73, 55, 51, .1);
-  }
-
-  .health-suggestion {
-    grid-template-columns: 1fr;
-  }
-
-  .health-suggestion small {
-    grid-column: 1;
   }
 
   .chart-frame {

@@ -2,7 +2,7 @@
 
 Blood is an AO Labs health record for glucose readings captured by a CONTOUR NEXT ONE meter plus Health Connect HR, sleep, and steps. Blood estimates HRV from sleep/rest heart-rate samples when true HRV/RMSSD is unavailable.
 
-The public page renders a top anxiety estimate on a `/10` scale followed by five aligned graphs for glucose, HR, HRV, sleep, and steps. Viewing the graph is public so it works from any device; writing records requires the ingest token.
+The public page renders a compact top anxiety estimate on a `/10` scale followed by six aligned graphs for anxiety, glucose, HR, HRV, sleep, and steps. Viewing the graph is public so it works from any device; writing records requires the ingest token.
 
 ## Data path
 
@@ -24,7 +24,7 @@ Fallbacks only:
 
 `Manual mg/dL entry -> blood.aolabs.io Write path form -> Blood API -> graph`
 
-The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there. If true HRV/RMSSD is unavailable, Blood calculates an estimated HRV from sufficiently dense sleep/rest HR samples.
+The website cannot directly read another phone app's private storage. Glucose comes from the meter's Bluetooth service. HR, sleep, and steps come from Health Connect after the phone grants those permissions and another phone/wearable source writes records there. If true HRV/RMSSD is unavailable, Blood calculates an estimated HRV only from sufficiently dense, clean, independent sleep/rest HR windows.
 
 ## Phone setup
 
@@ -48,7 +48,7 @@ Health Connect metrics:
 3. Confirm the phone has sources for heart rate, steps, sleep, and HRV if a true RMSSD source is available.
 4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
 
-HR should stay current when the watch or phone writes current heart-rate samples into Health Connect and the bridge uploads them. Blood now separates those two freshness states on the page: health upload time, and the latest Samsung/Health Connect HR sample time. If Samsung Health is visibly newer than Blood while Blood shows an older HR source time, the shared Health Connect copy is stale or delayed; Blood is not reading Samsung Health's private app store directly. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples and waits if the sample set is too thin or too noisy. A truly live watch feed requires a separate Samsung SDK or watch-sensor bridge rather than the current Health Connect phone bridge.
+HR should stay current when the watch or phone writes current heart-rate samples into Health Connect and the bridge uploads them. Blood separates those two freshness states on the page: health upload time, and the latest Samsung/Health Connect HR sample time. If Samsung Health is visibly newer than Blood while Blood shows an older HR source time, the shared Health Connect copy is stale or delayed; Blood is not reading Samsung Health's private app store directly. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples, rejects noisy segments, requires low-overlap windows, and waits if the sample set is too thin or too noisy. A truly live watch feed requires a separate Samsung SDK or watch-sensor bridge rather than the current Health Connect phone bridge.
 
 ## Local
 

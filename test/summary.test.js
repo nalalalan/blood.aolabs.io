@@ -9,6 +9,7 @@ const {
   estimateAnxietyState,
   estimateInstabilityPatterns,
   summarizeHealthMetrics,
+  estimateAnxietyTrend,
   summarizeReadings
 } = require("../server");
 
@@ -84,8 +85,8 @@ test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
   assert.equal(health.anxiety.suggestion.source, "heart_rate");
 });
 
-test("calculates estimated HRV from enough heart-rate samples", () => {
-  const heartRate = Array.from({ length: 80 }, (_, index) => ({
+test("calculates estimated HRV from enough clean sleep heart-rate samples", () => {
+  const heartRate = Array.from({ length: 180 }, (_, index) => ({
     measuredAt: new Date(Date.UTC(2026, 5, 27, 2, index, 0)).toISOString(),
     valueBpm: index % 2 === 0 ? 60 : 62
   }));
@@ -95,7 +96,7 @@ test("calculates estimated HRV from enough heart-rate samples", () => {
     heartRate,
     sleepSessions: [{
       startTime: "2026-06-27T02:00:00.000Z",
-      endTime: "2026-06-27T03:30:00.000Z"
+      endTime: "2026-06-27T05:15:00.000Z"
     }]
   });
   const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
@@ -104,11 +105,12 @@ test("calculates estimated HRV from enough heart-rate samples", () => {
   assert.equal(health.latest.hrv.unit, "ms_est");
   assert.equal(health.latest.hrv.estimated, true);
   assert.equal(health.latest.hrv.basis, "sleep_heart_rate_samples");
-  assert.equal(health.latest.hrv.sampleCount, 80);
+  assert.equal(health.latest.hrv.sampleCount, 180);
   assert.ok(health.latest.hrv.pairCount >= 120);
+  assert.ok(health.latest.hrv.coverageRatio >= 0.9);
   assert.equal(health.latest.hrv.quality, "sleep_dense_hr_estimate");
   assert.equal(health.latest.hrv.confidence, "highest_available_without_beat_intervals");
-  assert.ok(health.latest.hrv.restWindowCount > 1);
+  assert.ok(health.latest.hrv.restWindowCount >= 4);
   assert.equal(health.trends.hrv.length, 1);
   assert.match(health.anxiety.factors.find((factor) => factor.key === "hrv")?.label || "", /estimated HRV/);
 });
@@ -121,6 +123,26 @@ test("does not estimate HRV from too few heart-rate samples", () => {
       { measuredAt: "2026-06-27T11:58:00.000Z", valueBpm: 70 },
       { measuredAt: "2026-06-27T11:59:00.000Z", valueBpm: 76 }
     ]
+  });
+  const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
+
+  assert.equal(health.latest.hrv, null);
+  assert.deepEqual(health.trends.hrv, []);
+});
+
+test("does not estimate HRV from noisy heart-rate samples", () => {
+  const heartRate = Array.from({ length: 180 }, (_, index) => ({
+    measuredAt: new Date(Date.UTC(2026, 5, 27, 2, index, 0)).toISOString(),
+    valueBpm: index % 9 === 0 ? 108 : (index % 2 === 0 ? 60 : 62)
+  }));
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-27T12:00:00.000Z",
+    heartRate,
+    sleepSessions: [{
+      startTime: "2026-06-27T02:00:00.000Z",
+      endTime: "2026-06-27T05:15:00.000Z"
+    }]
   });
   const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
 
@@ -151,7 +173,7 @@ test("prefers source HRV over calculated HRV for the same date", () => {
   assert.equal(health.latest.hrv.basis, "health_connect_rmssd");
 });
 
-test("anxiety suggestion uses current block and one positive action", () => {
+test("anxiety suggestion uses latest upload source state and one positive action", () => {
   assert.equal(currentTimeBlock(17), "afternoon");
   const anxiety = estimateAnxietyState({
     glucose: { valueMgDl: 112 },
@@ -162,11 +184,12 @@ test("anxiety suggestion uses current block and one positive action", () => {
     hour: 17
   });
 
-  assert.equal(anxiety.suggestion.time, "afternoon");
+  assert.equal(anxiety.suggestion.label, "Latest upload");
   assert.equal(anxiety.suggestion.source, "heart_rate");
-  assert.equal(anxiety.suggestion.action, "Water plus light movement more.");
+  assert.equal(anxiety.suggestion.reason, "104 bpm HR is too high.");
+  assert.equal(anxiety.suggestion.action, "Water more; protein/fiber snack more; easy walk more.");
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
-  assert.doesNotMatch(anxiety.suggestion.action, /\bless\b|avoid|restrict|reduce|stop/i);
+  assert.doesNotMatch(`${anxiety.suggestion.label} ${anxiety.suggestion.reason} ${anxiety.suggestion.action}`, /\bnow\b|outlier|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
 test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
@@ -179,10 +202,10 @@ test("anxiety suggestion keeps low HRV concrete and source-backed", () => {
     hour: 23
   });
 
-  assert.equal(anxiety.suggestion.time, "night");
+  assert.equal(anxiety.suggestion.label, "Latest upload");
   assert.equal(anxiety.suggestion.source, "hrv");
-  assert.equal(anxiety.suggestion.reason, "12 ms estimated HRV is low.");
-  assert.equal(anxiety.suggestion.action, "Water plus small food more; gentle walk more.");
+  assert.equal(anxiety.suggestion.reason, "12 ms estimated HRV is too low.");
+  assert.equal(anxiety.suggestion.action, "Water more; protein/fiber meal rhythm more; gentle walk more.");
   assert.doesNotMatch(anxiety.suggestion.action, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
@@ -260,5 +283,31 @@ test("instability patterns identify the strongest source-backed time block", () 
   assert.equal(patterns.prediction.block, "night");
   assert.match(patterns.prediction.title, /night/);
   assert.match(patterns.prediction.detail, /glucose|HR|HRV/);
+  assert.match(patterns.prediction.detail, /too high|too low|near high|raised|light|short/);
+  assert.doesNotMatch(patterns.prediction.detail, /flagged|outlier/i);
   assert.match(patterns.prediction.basis, /recalculates after each upload/);
+});
+
+test("anxiety trend reconstructs historical score points from glucose and health samples", () => {
+  const readings = sanitizePayload({
+    source: "test",
+    capturedAt: "2026-06-28T04:00:00.000Z",
+    readings: [
+      { measuredAt: "2026-06-27T12:00:00.000Z", valueMgDl: 104 },
+      { measuredAt: "2026-06-27T13:00:00.000Z", valueMgDl: 148 }
+    ]
+  });
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-28T04:00:00.000Z",
+    heartRate: [{ measuredAt: "2026-06-27T13:05:00.000Z", valueBpm: 106 }],
+    hrv: [{ measuredAt: "2026-06-27T12:30:00.000Z", rmssdMs: 22 }]
+  });
+  const health = summarizeHealthMetrics(metrics, null, readings[1]);
+  const trend = estimateAnxietyTrend({ readings, health });
+
+  assert.ok(trend.length >= 1);
+  assert.ok(trend.every((point) => point.unit === "score_1_10"));
+  assert.ok(trend.every((point) => point.value >= 1 && point.value <= 10));
+  assert.ok(trend.some((point) => point.source === "heart_rate" || point.source === "hrv"));
 });

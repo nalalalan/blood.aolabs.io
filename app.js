@@ -150,6 +150,15 @@ function hrvBasisLabel(metric) {
   return "HR estimate";
 }
 
+function hrvDetailLabel(metric) {
+  const parts = [hrvBasisLabel(metric)];
+  if (metric?.confidence) parts.push(metric.confidence.replace(/_/g, " "));
+  if (Number.isFinite(Number(metric?.restWindowCount))) parts.push(`${metric.restWindowCount} windows`);
+  if (Number.isFinite(Number(metric?.pairCount))) parts.push(`${metric.pairCount} pairs`);
+  if (Number.isFinite(Number(metric?.medianGapMinutes))) parts.push(`${metric.medianGapMinutes} min median gap`);
+  return parts.join(", ");
+}
+
 function daysAgo(days) {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -194,9 +203,11 @@ function renderBoundary(message, detail = "") {
 function buildSeries(data) {
   const healthTrends = data?.health?.trends || {};
   const latest = data?.health?.latest || {};
+  const latestAnxiety = data?.health?.anxiety || {};
   const latestGlucose = latest.glucose || data?.latest || null;
   const latestSleepMinutes = latest.sleep?.asleepMinutes ?? latest.sleep?.value;
   const currentLabels = {
+    anxiety: Number.isFinite(Number(latestAnxiety.score)) ? `${formatScore10(latestAnxiety.score)}/10` : "",
     glucose: latestGlucose?.valueMgDl ? `${latestGlucose.valueMgDl} mg/dL` : "",
     "heart-rate": latest.heartRate?.value ? `${latest.heartRate.value} bpm` : "",
     hrv: formatHrvMetric(latest.hrv),
@@ -208,9 +219,10 @@ function buildSeries(data) {
       : ""
   };
   const currentStamps = {
+    anxiety: latestAnxiety.label ? latestAnxiety.label : "",
     glucose: metricStamp(latestGlucose),
     "heart-rate": metricStamp(latest.heartRate),
-    hrv: latest.hrv ? `${hrvBasisLabel(latest.hrv)}${metricStamp(latest.hrv) ? ` · ${metricStamp(latest.hrv)}` : ""}` : "",
+    hrv: latest.hrv ? `${hrvBasisLabel(latest.hrv)}${metricStamp(latest.hrv) ? ` - ${metricStamp(latest.hrv)}` : ""}` : "",
     sleep: metricStamp(latest.sleep),
     steps: metricStamp(latest.steps, "capturedAt")
   };
@@ -225,6 +237,22 @@ function buildSeries(data) {
     }];
   };
   return [
+    {
+      key: "anxiety",
+      title: "Anxiety",
+      unit: "/10",
+      empty: "Waiting for enough source history.",
+      currentLabel: currentLabels.anxiety,
+      currentStamp: currentStamps.anxiety,
+      yFloor: 1,
+      yCeil: 10,
+      ticks: [1, 3, 5, 7, 10],
+      points: [...(healthTrends.anxiety || [])].map((point) => ({
+        measuredAt: point.measuredAt,
+        value: point.value,
+        title: `${formatDateTime(point.measuredAt)}: ${formatScore10(point.value)}/10${point.reason ? ` - ${point.reason}` : ""}`
+      }))
+    },
     {
       key: "glucose",
       title: "Glucose",
@@ -271,7 +299,7 @@ function buildSeries(data) {
       points: withLatest([...(healthTrends.hrv || [])].map((metric) => ({
         measuredAt: metric.measuredAt,
         value: metric.value,
-        title: `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)} (${hrvBasisLabel(metric)}${metric.confidence ? `, ${metric.confidence.replace(/_/g, " ")}` : ""})`
+        title: `${formatDateTime(metric.measuredAt)}: ${formatHrvMetric(metric)} (${hrvDetailLabel(metric)})`
       })), latest.hrv)
     },
     {
@@ -533,11 +561,11 @@ function renderHealth(data) {
 
   const suggestion = anxiety.suggestion || {};
   if (suggestionTime) {
-    suggestionTime.textContent = suggestion.time ? `Now: ${suggestion.time}` : "Now";
+    suggestionTime.textContent = suggestion.label || "Latest upload";
   }
   if (suggestionAction) {
     const reason = suggestion.reason || "";
-    const action = suggestion.action || "Blood will choose the next stabilizing action from the current outlier.";
+    const action = suggestion.action || "Blood will choose the next food, water, or movement action from the latest uploaded source state.";
     suggestionAction.textContent = reason ? `${reason} ${action}` : action;
   }
   if (suggestionReason) {

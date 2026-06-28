@@ -11,7 +11,7 @@ Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io
 - HRV basis: sleep_heart_rate_samples
 - HRV quality: sleep_dense_hr_estimate
 - HRV confidence: highest_available_without_beat_intervals
-- HRV samples: 735 heart-rate samples, 240 accepted adjacent RR-difference pairs, 8 selected windows
+- HRV samples: 735 heart-rate samples, 240 accepted adjacent RR-difference pairs, 8 selected non-overlapping/low-overlap windows
 - sleep: 431 minutes asleep
 - steps: 13,028 steps in the recent 24-hour window
 - anxiety score: 4.4 /10
@@ -19,11 +19,12 @@ Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io
 Current bridge/UI boundary:
 
 - Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
-- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood now shows both the health-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
+- Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood shows both the health-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
 - True HRV is current only when Health Connect exposes RMSSD HRV records. Without that source, Blood uses the labeled sleep/rest HR estimate and shows its estimate timestamp.
 - A direct Samsung Health current-feed path would require the proprietary Samsung Health Data SDK or a separate watch sensor bridge; the current Blood Bridge reads the Health Connect copy.
 
 Anxiety score source function: `server.js::estimateAnxietyState`.
+Anxiety trend source function: `server.js::estimateAnxietyTrend`.
 Time-pattern source function: `server.js::estimateInstabilityPatterns`.
 
 Calculation:
@@ -58,7 +59,7 @@ Live worked example:
 
 `score = 2.20 * 2 = 4.4 /10`
 
-Suggestion timing is deliberately simple current-block labeling, not delay scheduling or learned pattern detection:
+Time blocks are used only for the learned pattern window, not for the top action label:
 
 - 5 AM to before 10 AM ET: morning
 - 10 AM to before 2 PM ET: midday
@@ -66,6 +67,18 @@ Suggestion timing is deliberately simple current-block labeling, not delay sched
 - 6 PM to before 10 PM ET: evening
 - 10 PM to before 5 AM ET: night
 
-The suggestion action is taken from the strongest positive current factor and written as source reason plus one positive eating, drinking, or movement action. If no positive factor exists, Blood returns a water/food/movement action. The visible suggestion must name the triggering metric, value or freshness boundary, and concrete behavior so it does not read like a disconnected wellness fragment. Blood recommendations do not restrict exercise and do not use phone, breathing, task-switching, focus, or work-management language.
+The suggestion action is taken from the strongest positive latest-uploaded factor and written as source reason plus one positive eating, drinking, or movement action. If no positive factor exists, Blood returns a water/food/movement action. The visible suggestion must name whether the triggering metric is too high, too low, near an edge, short, light, or raised, plus a concrete diet, water, or more-movement behavior. Blood recommendations do not restrict exercise and do not use phone, breathing, task-switching, focus, or work-management language.
 
-The top pattern surface groups recent source records by Eastern time block: morning, midday, afternoon, evening, and night. It scores glucose, HR, HRV, sleep, and steps with the same bounded instability factors used by the current estimate, reduces dense heart-rate records to hourly median buckets, and reports the block with the strongest recent instability pattern. The rolling window is 45 days, and the pattern is recomputed from stored source records on each summary API response so it changes as additional bridge data arrives.
+The top pattern surface groups recent source records by Eastern time block: morning, midday, afternoon, evening, and night. It scores glucose, HR, HRV, sleep, and steps with the same bounded high/low/short/light/raised factors used by the latest estimate, reduces dense heart-rate records to hourly median buckets, and reports the block with the strongest recent instability pattern. The rolling window is 45 days, and the pattern is recomputed from stored source records on each summary API response so it changes as additional bridge data arrives.
+
+The anxiety graph is the first graph in the aligned stack. It reconstructs historical score points from stored glucose readings and health-trend samples, keeps only points with at least two source inputs, and appends the latest anxiety score as the newest visible point when available. The visible chart stack is six graphs: anxiety, glucose, HR, HRV, sleep, and steps.
+
+HRV estimate tightening:
+
+- true source HRV/RMSSD always wins for a date when present
+- proxy HRV uses sleep heart-rate samples first, then resting samples only when sleep samples are unavailable
+- each candidate window must be at least 18 minutes long, have at least 14 accepted adjacent RR-difference pairs, median sample gap no higher than 2.25 minutes, and coverage at least 80%
+- candidate windows with high median HR, high HR standard deviation, high median/p90 HR steps, or high p90 RR difference are rejected
+- noisy adjacent pairs are removed with median-absolute-deviation gates before RMSSD-like calculation
+- selected windows must be independent or low-overlap; at least two windows and 40 accepted pairs are required before an estimated HRV is emitted
+- API metadata exposes pair count, rejected pair count, median gap, coverage ratio, selected window count, quality, and confidence

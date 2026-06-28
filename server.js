@@ -819,6 +819,21 @@ function standardDeviation(values) {
   return Math.sqrt(variance);
 }
 
+function percentile(values, ratio) {
+  const sorted = values
+    .filter((value) => Number.isFinite(Number(value)))
+    .map(Number)
+    .sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
+  return sorted[index];
+}
+
+function medianAbsoluteDeviation(values, center = median(values)) {
+  if (!Number.isFinite(Number(center))) return 0;
+  return median(values.map((value) => Math.abs(Number(value) - Number(center)))) || 0;
+}
+
 function hrvSleepWindows(metrics, date) {
   return metrics
     .filter((metric) => metric.type === "sleep" && metric.startTime && metric.endTime)
@@ -834,45 +849,63 @@ function pointInWindows(point, windows) {
   return windows.some((window) => point.time >= window.start && point.time <= window.end);
 }
 
-function hrvCandidateWindow(points, maxPairGapMs = 3 * 60 * 1000) {
-  if (points.length < 10) return null;
+function hrvCandidateWindow(points, maxPairGapMs = 2.5 * 60 * 1000) {
+  if (points.length < 18) return null;
 
-  const pairs = [];
-  const gapMinutes = [];
-  const bpmSteps = [];
+  const pairDetails = [];
   for (let index = 1; index < points.length; index += 1) {
     const gapMs = points[index].time - points[index - 1].time;
     if (gapMs <= 0 || gapMs > maxPairGapMs) continue;
     const rrDiff = points[index].rrMs - points[index - 1].rrMs;
-    pairs.push(rrDiff * rrDiff);
-    gapMinutes.push(gapMs / 60_000);
-    bpmSteps.push(Math.abs(points[index].value - points[index - 1].value));
+    pairDetails.push({
+      squared: rrDiff * rrDiff,
+      rrDiffAbs: Math.abs(rrDiff),
+      gapMinutes: gapMs / 60_000,
+      bpmStep: Math.abs(points[index].value - points[index - 1].value)
+    });
   }
-  if (pairs.length < 8) return null;
+  if (pairDetails.length < 14) return null;
 
   const bpmValues = points.map((point) => point.value);
   const bpmMedian = median(bpmValues);
   const bpmStdDev = standardDeviation(bpmValues);
+  const bpmSteps = pairDetails.map((pair) => pair.bpmStep);
+  const rrDiffs = pairDetails.map((pair) => pair.rrDiffAbs);
   const bpmStepMedian = median(bpmSteps) || 0;
+  const bpmStepP90 = percentile(bpmSteps, 0.9) || 0;
+  const rrDiffMedian = median(rrDiffs) || 0;
+  const rrDiffP90 = percentile(rrDiffs, 0.9) || 0;
   const durationMinutes = (points[points.length - 1].time - points[0].time) / 60_000;
-  const medianGap = median(gapMinutes) || 0;
-  if (durationMinutes < 8 || medianGap <= 0) return null;
-  if (bpmMedian > 95 || bpmStdDev > 9 || bpmStepMedian > 5) return null;
+  const medianGap = median(pairDetails.map((pair) => pair.gapMinutes)) || 0;
+  const coverageRatio = pairDetails.length / Math.max(1, points.length - 1);
+  if (durationMinutes < 18 || medianGap <= 0 || medianGap > 2.25 || coverageRatio < 0.8) return null;
+  if (bpmMedian > 92 || bpmStdDev > 7 || bpmStepMedian > 3.5 || bpmStepP90 > 8 || rrDiffP90 > 160) return null;
 
-  const rmssd = Math.sqrt(pairs.reduce((sum, value) => sum + value, 0) / pairs.length);
+  const maxBpmStep = Math.max(6, bpmStepMedian + (medianAbsoluteDeviation(bpmSteps, bpmStepMedian) * 4));
+  const maxRrDiff = Math.max(80, rrDiffMedian + (medianAbsoluteDeviation(rrDiffs, rrDiffMedian) * 4));
+  const acceptedPairs = pairDetails.filter((pair) => pair.bpmStep <= maxBpmStep && pair.rrDiffAbs <= maxRrDiff);
+  if (acceptedPairs.length < 14 || acceptedPairs.length / pairDetails.length < 0.82) return null;
+
+  const rmssd = Math.sqrt(acceptedPairs.reduce((sum, pair) => sum + pair.squared, 0) / acceptedPairs.length);
   if (!Number.isFinite(rmssd) || rmssd < 1 || rmssd > 300) return null;
 
   return {
     value: rmssd,
-    pairCount: pairs.length,
+    pairCount: acceptedPairs.length,
+    rejectedPairCount: pairDetails.length - acceptedPairs.length,
     medianGap,
     bpmMedian,
     bpmStdDev,
     bpmStepMedian,
+    bpmStepP90,
+    rrDiffP90,
+    coverageRatio,
     durationMinutes,
     startTime: points[0].measuredAt,
     endTime: points[points.length - 1].measuredAt,
-    score: bpmMedian + (bpmStdDev * 5) + (bpmStepMedian * 4) + (medianGap * 2)
+    startMs: points[0].time,
+    endMs: points[points.length - 1].time,
+    score: bpmMedian + (bpmStdDev * 7) + (bpmStepMedian * 5) + (medianGap * 3) + ((1 - coverageRatio) * 25) + ((pairDetails.length - acceptedPairs.length) * 2)
   };
 }
 
@@ -897,6 +930,24 @@ function hrvWindowCandidates(points) {
   return candidates;
 }
 
+function hrvOverlapRatio(candidate, selected) {
+  const overlap = Math.max(0, Math.min(candidate.endMs, selected.endMs) - Math.max(candidate.startMs, selected.startMs));
+  if (!overlap) return 0;
+  const candidateDuration = Math.max(1, candidate.endMs - candidate.startMs);
+  return overlap / candidateDuration;
+}
+
+function selectHrvCandidates(candidates, limit = 8) {
+  const selected = [];
+  for (const candidate of [...candidates].sort((a, b) => a.score - b.score)) {
+    if (selected.every((existing) => hrvOverlapRatio(candidate, existing) <= 0.2 && hrvOverlapRatio(existing, candidate) <= 0.2)) {
+      selected.push(candidate);
+      if (selected.length >= limit) break;
+    }
+  }
+  return selected;
+}
+
 function metricTrend(metrics, type, limit = 900) {
   return metrics
     .filter((metric) => metric.type === type)
@@ -919,7 +970,9 @@ function metricTrend(metrics, type, limit = 900) {
       quality: metric.quality,
       sampleCount: metric.sampleCount,
       pairCount: metric.pairCount,
+      rejectedPairCount: metric.rejectedPairCount,
       medianGapMinutes: metric.medianGapMinutes,
+      coverageRatio: metric.coverageRatio,
       confidence: metric.confidence,
       restWindowCount: metric.restWindowCount,
       windowMinutes: metric.windowMinutes
@@ -960,28 +1013,29 @@ function calculatedHrvTrend(metrics, limit = 90) {
     }
     if (!candidates.length) continue;
 
-    const selected = candidates
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 8);
+    const selected = selectHrvCandidates(candidates, 8);
+    if (selected.length < 2) continue;
     const rawValue = median(selected.map((candidate) => candidate.value));
     const value = Math.max(1, Math.min(300, Math.round(rawValue)));
     const pairCount = selected.reduce((sum, candidate) => sum + candidate.pairCount, 0);
-    if (pairCount < 20) continue;
+    if (pairCount < 40) continue;
 
     const medianGap = median(selected.map((candidate) => candidate.medianGap)) || 0;
+    const rejectedPairCount = selected.reduce((sum, candidate) => sum + candidate.rejectedPairCount, 0);
+    const coverageRatio = median(selected.map((candidate) => candidate.coverageRatio)) || 0;
     const latestWindowEnd = selected
       .map((candidate) => candidate.endTime)
       .filter(Boolean)
       .sort()
       .at(-1);
     const last = points.find((point) => point.measuredAt === latestWindowEnd) || points[points.length - 1];
-    const confidence = basis === "sleep_heart_rate_samples" && medianGap <= 1.5 && pairCount >= 120
+    const confidence = basis === "sleep_heart_rate_samples" && medianGap <= 1.25 && pairCount >= 120 && selected.length >= 4 && coverageRatio >= 0.9
       ? "highest_available_without_beat_intervals"
-      : medianGap <= 2.5 && pairCount >= 60
+      : medianGap <= 2 && pairCount >= 60 && coverageRatio >= 0.85
         ? "strong_proxy"
         : "limited_proxy";
     const qualityPrefix = basis === "sleep_heart_rate_samples" ? "sleep" : "resting";
-    const quality = medianGap <= 1.5 && selected.length >= 2
+    const quality = medianGap <= 1.25 && selected.length >= 3 && coverageRatio >= 0.9
       ? `${qualityPrefix}_dense_hr_estimate`
       : `${qualityPrefix}_sampled_hr_estimate`;
     const metric = {
@@ -1006,7 +1060,9 @@ function calculatedHrvTrend(metrics, limit = 90) {
       confidence,
       sampleCount: points.length,
       pairCount,
+      rejectedPairCount,
       medianGapMinutes: Number(medianGap.toFixed(1)),
+      coverageRatio: Number(coverageRatio.toFixed(2)),
       restWindowCount: selected.length,
       windowMinutes: Math.round(median(selected.map((candidate) => candidate.durationMinutes)) || 0)
     };
@@ -1147,32 +1203,33 @@ function patternScore(source, value) {
   if (!Number.isFinite(number)) return { score: 0, reason: "" };
 
   if (source === "glucose") {
-    if (number < 70) return { score: 1.0, reason: "glucose below range" };
-    if (number > 180) return { score: 0.9, reason: "glucose above range" };
-    if (number < 82 || number > 140) return { score: 0.35, reason: "glucose near range edge" };
+    if (number < 70) return { score: 1.0, reason: "glucose too low" };
+    if (number > 180) return { score: 0.9, reason: "glucose too high" };
+    if (number < 82) return { score: 0.35, reason: "glucose near low edge" };
+    if (number > 140) return { score: 0.35, reason: "glucose near high edge" };
     return { score: 0, reason: "" };
   }
 
   if (source === "heart_rate") {
-    if (number >= 100) return { score: 0.85, reason: "HR elevated" };
+    if (number >= 100) return { score: 0.85, reason: "HR too high" };
     if (number >= 85) return { score: 0.4, reason: "HR raised" };
     return { score: 0, reason: "" };
   }
 
   if (source === "hrv") {
-    if (number < 25) return { score: 0.8, reason: "HRV low" };
-    if (number < 40) return { score: 0.45, reason: "HRV soft" };
+    if (number < 25) return { score: 0.8, reason: "HRV too low" };
+    if (number < 40) return { score: 0.45, reason: "HRV low" };
     return { score: 0, reason: "" };
   }
 
   if (source === "sleep") {
-    if (number < 300) return { score: 0.9, reason: "sleep short" };
+    if (number < 300) return { score: 0.9, reason: "sleep too short" };
     if (number < 360) return { score: 0.45, reason: "sleep light" };
     return { score: 0, reason: "" };
   }
 
   if (source === "steps") {
-    if (number < 1500) return { score: 0.35, reason: "steps low" };
+    if (number < 1500) return { score: 0.35, reason: "steps too low" };
     if (number < 4000) return { score: 0.15, reason: "steps light" };
     return { score: 0, reason: "" };
   }
@@ -1242,6 +1299,27 @@ function addPatternObservation(stats, measuredAt, source, value, now) {
   }
 }
 
+function compactJoin(items = []) {
+  return items.filter(Boolean).slice(0, 3).join(" + ");
+}
+
+function summarizePatternReasons(reasons = []) {
+  const buckets = new Map();
+  for (const item of reasons) {
+    if (!item?.reason) continue;
+    const current = buckets.get(item.reason) || { reason: item.reason, count: 0, scoreTotal: 0, latestTime: 0 };
+    current.count += 1;
+    current.scoreTotal += Number(item.score) || 0;
+    current.latestTime = Math.max(current.latestTime, new Date(item.measuredAt).getTime() || 0);
+    buckets.set(item.reason, current);
+  }
+  const topReasons = Array.from(buckets.values())
+    .sort((a, b) => b.count - a.count || b.scoreTotal - a.scoreTotal || b.latestTime - a.latestTime)
+    .slice(0, 3)
+    .map((item) => item.reason);
+  return compactJoin(topReasons);
+}
+
 function summarizePatternBlock(block) {
   const averageScore = block.weightTotal ? block.weightedScore / block.weightTotal : 0;
   const unstableShare = block.weightTotal ? block.unstableWeight / block.weightTotal : 0;
@@ -1267,6 +1345,7 @@ function summarizePatternBlock(block) {
     unstableShare: Number(unstableShare.toFixed(2)),
     sources: sourceEntries,
     topSources,
+    conditionText: summarizePatternReasons(block.reasons),
     reasons: block.reasons
       .sort((a, b) => b.score - a.score || new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
       .slice(0, 4)
@@ -1313,12 +1392,13 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
   const currentBlockKey = currentTimeBlock(easternHour(now));
   const current = blocks.find((block) => block.block === currentBlockKey) || null;
   const active = Boolean(prediction && totalObservations >= 6);
-  const sourceText = prediction?.topSources?.length ? prediction.topSources.join(" + ") : "Source";
+  const conditionText = prediction?.conditionText || compactJoin(prediction?.topSources || []) || "source state moved";
+  const observationWord = prediction?.observations === 1 ? "sample" : "samples";
   const predictionDetail = prediction
-    ? `${prediction.range} had ${prediction.unstableCount} flagged samples out of ${prediction.observations}; strongest sources: ${sourceText}.`
+    ? `${prediction.range}: ${conditionText}. ${prediction.unstableCount} of ${prediction.observations} source ${observationWord} read high, low, short, light, or raised.`
     : null;
   const predictionBasis = prediction
-    ? `${prediction.observations} source samples in the 45-day rolling window; recalculates after each upload.`
+    ? "45-day rolling window; recalculates after each upload."
     : `${totalObservations} source samples so far; recalculates after each upload.`;
 
   return {
@@ -1355,16 +1435,19 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const value = glucose.valueMgDl;
     if (value < 70) {
       raw += 1.0;
-      pushFactor(factors, "glucose", "glucose low", 1.0, `${value} mg/dL is below range.`, "Carb plus protein now more; water more.");
+      pushFactor(factors, "glucose", "glucose too low", 1.0, `${value} mg/dL glucose is too low.`, "Carb plus protein snack more; water more.");
     } else if (value > 180) {
       raw += 0.9;
-      pushFactor(factors, "glucose", "glucose high", 0.9, `${value} mg/dL is above range.`, "Easy 10-minute walk more; water more.");
-    } else if (value < 82 || value > 140) {
+      pushFactor(factors, "glucose", "glucose too high", 0.9, `${value} mg/dL glucose is too high.`, "Protein/fiber with carbs more; water more; easy walk more.");
+    } else if (value < 82) {
       raw += 0.35;
-      pushFactor(factors, "glucose", "glucose edge", 0.35, `${value} mg/dL is near the edge of the target band.`, "Protein or fiber with the next food more; water more.");
+      pushFactor(factors, "glucose", "glucose near low edge", 0.35, `${value} mg/dL glucose is near the low edge.`, "Carb plus protein snack more; water more.");
+    } else if (value > 140) {
+      raw += 0.35;
+      pushFactor(factors, "glucose", "glucose near high edge", 0.35, `${value} mg/dL glucose is near the high edge.`, "Protein/fiber with carbs more; water more; easy walk more.");
     } else {
       raw -= 0.15;
-      pushFactor(factors, "glucose", "glucose stable", -0.15, `${value} mg/dL is inside the target band.`, "Normal meal rhythm more; water more.");
+      pushFactor(factors, "glucose", "glucose steady", -0.15, `${value} mg/dL glucose is inside the target band.`, "Normal meal rhythm more; water more.");
     }
   }
 
@@ -1372,13 +1455,13 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const value = heartRate.value;
     if (value >= 100) {
       raw += 0.85;
-      pushFactor(factors, "heart_rate", "HR high", 0.85, `${value} bpm is elevated.`, "Water plus light movement more.");
+      pushFactor(factors, "heart_rate", "HR too high", 0.85, `${value} bpm HR is too high.`, "Water more; protein/fiber snack more; easy walk more.");
     } else if (value >= 85) {
       raw += 0.4;
-      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm is raised.`, "Water plus easy walk more.");
+      pushFactor(factors, "heart_rate", "HR raised", 0.4, `${value} bpm HR is raised.`, "Water more; protein/fiber snack more; easy walk more.");
     } else if (value >= 55 && value <= 75) {
       raw -= 0.15;
-      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm is calm.`, "Normal exercise more; water more.");
+      pushFactor(factors, "heart_rate", "HR calm", -0.15, `${value} bpm HR is calm.`, "Normal meals more; water more; exercise more.");
     }
   }
 
@@ -1387,10 +1470,10 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const labelPrefix = hrv.estimated || hrv.derived ? "estimated HRV" : "HRV";
     if (value < 25) {
       raw += 0.8;
-      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.8, `${value} ms ${labelPrefix} is low.`, "Water plus small food more; gentle walk more.");
+      pushFactor(factors, "hrv", `${labelPrefix} too low`, 0.8, `${value} ms ${labelPrefix} is too low.`, "Water more; protein/fiber meal rhythm more; gentle walk more.");
     } else if (value < 40) {
       raw += 0.45;
-      pushFactor(factors, "hrv", `${labelPrefix} soft`, 0.45, `${value} ms ${labelPrefix} is soft.`, "Water plus gentle walk more.");
+      pushFactor(factors, "hrv", `${labelPrefix} low`, 0.45, `${value} ms ${labelPrefix} is low.`, "Water more; protein/fiber meal rhythm more; gentle walk more.");
     } else if (value >= 65) {
       raw -= 0.25;
       pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Normal exercise more; water more.");
@@ -1402,10 +1485,10 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     const hours = minutes / 60;
     if (minutes < 300) {
       raw += 0.9;
-      pushFactor(factors, "sleep", "sleep short", 0.9, `${hours.toFixed(1)}h asleep is short.`, "Water plus simple food more; gentle walk more.");
+      pushFactor(factors, "sleep", "sleep too short", 0.9, `${hours.toFixed(1)}h asleep is too short.`, "Protein/fiber with first meal more; water more; easy movement more.");
     } else if (minutes < 360) {
       raw += 0.45;
-      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Water plus easy movement more; normal meal rhythm more.");
+      pushFactor(factors, "sleep", "sleep light", 0.45, `${hours.toFixed(1)}h asleep is light.`, "Protein/fiber with first meal more; water more; easy movement more.");
     } else if (minutes >= 420) {
       raw -= 0.25;
       pushFactor(factors, "sleep", "sleep solid", -0.25, `${hours.toFixed(1)}h asleep is solid.`, "Normal exercise more; water more.");
@@ -1415,10 +1498,10 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
   if (Number.isFinite(recentSteps)) {
     if (recentSteps < 1500) {
       raw += 0.35;
-      pushFactor(factors, "steps", "steps low", 0.35, `${recentSteps} steps in the recent window is low.`, "Short walk more; water more.");
+      pushFactor(factors, "steps", "steps too low", 0.35, `${recentSteps} steps in the recent window is too low.`, "Water more; normal meals more; short walks more.");
     } else if (recentSteps < 4000) {
       raw += 0.15;
-      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Short walks more; water more.");
+      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Water more; normal meals more; short walks more.");
     } else if (recentSteps >= 8000) {
       raw -= 0.25;
       pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Water after movement more; steady movement more.");
@@ -1427,18 +1510,17 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
 
   const score = Number(Math.max(1, Math.min(10, raw * 2)).toFixed(1));
   const primary = [...factors].sort((a, b) => b.points - a.points)[0] || null;
-  const time = currentTimeBlock(Number.isFinite(Number(hour)) ? Number(hour) : easternHour());
   const suggestion = primary
     ? {
-      time,
+      label: "Latest upload",
       action: primary.action,
       reason: primary.reason,
       source: primary.key
     }
     : {
-      time,
+      label: "Latest upload",
       action: "Water plus normal food more; easy walk more.",
-      reason: "No current outlier is available.",
+      reason: "No high, low, short, light, or raised source is available.",
       source: "none"
     };
 
@@ -1449,8 +1531,137 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     raw: Number(raw.toFixed(2)),
     factors,
     suggestion,
-    note: "Personal stabilization estimate from current health signals; not a diagnosis."
+    note: "Personal stabilization estimate from latest uploaded health signals; not a diagnosis."
   };
+}
+
+function latestAtOrBefore(items = [], atTime, maxAgeMs, mapper = (item) => item) {
+  let selected = null;
+  let selectedTime = -Infinity;
+  for (const item of items) {
+    const time = new Date(item?.measuredAt).getTime();
+    if (!Number.isFinite(time) || time > atTime || atTime - time > maxAgeMs) continue;
+    if (time >= selectedTime) {
+      selected = mapper(item);
+      selectedTime = time;
+    }
+  }
+  return selected;
+}
+
+function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) {
+  const trends = health?.trends || {};
+  const glucosePoints = readings
+    .filter((reading) => reading?.measuredAt && Number.isFinite(Number(reading.valueMgDl)))
+    .map((reading) => ({ ...reading, valueMgDl: Number(reading.valueMgDl) }))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  const heartRatePoints = [...(trends.heartRate || [])]
+    .filter((metric) => metric?.measuredAt && Number.isFinite(Number(metric.value)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  const hrvPoints = [...(trends.hrv || [])]
+    .filter((metric) => metric?.measuredAt && Number.isFinite(Number(metric.value)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  const sleepPoints = [...(trends.sleep || [])]
+    .filter((metric) => metric?.measuredAt && Number.isFinite(Number(metric.value ?? metric.asleepMinutes)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  const stepPoints = [...(trends.steps || [])]
+    .filter((metric) => metric?.measuredAt && Number.isFinite(Number(metric.value)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+
+  const candidateTimes = new Set();
+  for (const source of [glucosePoints, heartRatePoints, hrvPoints, sleepPoints, stepPoints]) {
+    for (const item of source) {
+      const time = new Date(item.measuredAt).getTime();
+      if (Number.isFinite(time)) candidateTimes.add(time);
+    }
+  }
+
+  const points = Array.from(candidateTimes)
+    .sort((a, b) => a - b)
+    .map((time) => {
+      const at = new Date(time);
+      const glucose = latestAtOrBefore(glucosePoints, time, 36 * 60 * 60 * 1000, (reading) => ({
+        measuredAt: reading.measuredAt,
+        valueMgDl: reading.valueMgDl
+      }));
+      const heartRate = latestAtOrBefore(heartRatePoints, time, 4 * 60 * 60 * 1000, (metric) => ({
+        measuredAt: metric.measuredAt,
+        value: metric.value
+      }));
+      const hrv = latestAtOrBefore(hrvPoints, time, 36 * 60 * 60 * 1000, (metric) => ({
+        measuredAt: metric.measuredAt,
+        value: metric.value,
+        estimated: metric.estimated,
+        derived: metric.derived,
+        basis: metric.basis
+      }));
+      const sleep = latestAtOrBefore(sleepPoints, time, 36 * 60 * 60 * 1000, (metric) => ({
+        measuredAt: metric.measuredAt,
+        asleepMinutes: Number(metric.asleepMinutes ?? metric.value),
+        value: Number(metric.asleepMinutes ?? metric.value)
+      }));
+      const steps = latestAtOrBefore(stepPoints, time, 36 * 60 * 60 * 1000, (metric) => Number(metric.value));
+      const sourceCount = [glucose, heartRate, hrv, sleep, Number.isFinite(steps) ? steps : null].filter((item) => item != null).length;
+      if (sourceCount < 2) return null;
+      const anxiety = estimateAnxietyState({
+        glucose,
+        heartRate,
+        hrv,
+        sleep,
+        recentSteps: steps,
+        hour: easternHour(at)
+      });
+      return {
+        measuredAt: at.toISOString(),
+        value: anxiety.score,
+        unit: "score_1_10",
+        label: anxiety.label,
+        sourceCount,
+        source: anxiety.suggestion?.source || "none",
+        reason: anxiety.suggestion?.reason || "",
+        action: anxiety.suggestion?.action || ""
+      };
+    })
+    .filter(Boolean);
+
+  const latestScore = Number(health?.anxiety?.score);
+  if (Number.isFinite(latestScore)) {
+    const latest = health?.latest || {};
+    const latestTimes = [
+      latest.glucose?.measuredAt,
+      latest.heartRate?.measuredAt,
+      latest.hrv?.measuredAt,
+      latest.sleep?.measuredAt,
+      latest.steps?.measuredAt,
+      glucosePoints.at(-1)?.measuredAt
+    ]
+      .map((value) => new Date(value).getTime())
+      .filter((time) => Number.isFinite(time));
+    const measuredAt = new Date(latestTimes.length ? Math.max(...latestTimes) : Date.now()).toISOString();
+    const existingTime = new Date(points.at(-1)?.measuredAt).getTime();
+    const latestTime = new Date(measuredAt).getTime();
+    if (!Number.isFinite(existingTime) || Math.abs(latestTime - existingTime) > 60_000) {
+      const sourceCount = [
+        latest.glucose,
+        latest.heartRate,
+        latest.hrv,
+        latest.sleep,
+        Number.isFinite(Number(latest.steps?.value)) ? latest.steps : null
+      ].filter(Boolean).length;
+      points.push({
+        measuredAt,
+        value: latestScore,
+        unit: "score_1_10",
+        label: health.anxiety.label || "",
+        sourceCount,
+        source: health.anxiety.suggestion?.source || "none",
+        reason: health.anxiety.suggestion?.reason || "",
+        action: health.anxiety.suggestion?.action || ""
+      });
+    }
+  }
+
+  return points.slice(-limit);
 }
 
 function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucose = null) {
@@ -1533,7 +1744,15 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
     }))
     .filter((reading) => reading.readingDate >= PUBLIC_MIN_READING_DATE)
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
-  const patterns = estimateInstabilityPatterns({ readings: normalized, health });
+  const anxietyTrend = estimateAnxietyTrend({ readings: normalized, health });
+  const healthWithAnxietyTrend = {
+    ...health,
+    trends: {
+      ...(health?.trends || {}),
+      anxiety: anxietyTrend
+    }
+  };
+  const patterns = estimateInstabilityPatterns({ readings: normalized, health: healthWithAnxietyTrend });
 
   if (!normalized.length) {
     return {
@@ -1545,7 +1764,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       readings: [],
       trend: [],
       days: [],
-      health,
+      health: healthWithAnxietyTrend,
       patterns,
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
       message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, sleep, and steps, and Blood estimates HRV from sleep/rest heart-rate samples."
@@ -1571,7 +1790,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       maxMgDl: Math.max(...values),
       avgMgDl: average(values)
     },
-    health,
+    health: healthWithAnxietyTrend,
     patterns,
     readings: normalized.slice(0, 30),
     trend: trendDesc.reverse(),
@@ -1740,6 +1959,7 @@ module.exports = {
   sanitizeHealthPayload,
   summarizeHealthMetrics,
   estimateAnxietyState,
+  estimateAnxietyTrend,
   estimateInstabilityPatterns,
   currentTimeBlock,
   summarizeReadings
