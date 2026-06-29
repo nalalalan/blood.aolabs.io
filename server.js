@@ -1586,6 +1586,18 @@ function compactJoin(items = []) {
   return items.filter(Boolean).slice(0, 3).join(" + ");
 }
 
+function proseList(items = [], limit = 4) {
+  const selected = items.filter(Boolean).slice(0, limit);
+  if (selected.length <= 1) return selected[0] || "";
+  if (selected.length === 2) return `${selected[0]} and ${selected[1]}`;
+  return `${selected.slice(0, -1).join(", ")}, and ${selected.at(-1)}`;
+}
+
+function ucfirst(value = "") {
+  const text = String(value || "");
+  return text ? `${text[0].toUpperCase()}${text.slice(1)}` : "";
+}
+
 function patternValueLabel(item) {
   const value = Number(item?.value);
   if (!Number.isFinite(value)) return "";
@@ -1956,13 +1968,14 @@ function patternDetailForItem(item) {
   const block = timeBlockFromTimestamp(item?.measuredAt) || currentTimeBlock(easternHour(new Date()));
   const blockMeta = TIME_BLOCKS.find((candidate) => candidate.key === block) || { label: block, range: "" };
   const move = patternMoveLabel(item);
+  const action = easyActionText(patternActionForItem(item));
   return {
     block,
     label: blockMeta.label,
     range: blockMeta.range,
     title: "Things to watch",
-    detail: `${blockMeta.range}: possible ${move} signal - ${formatPatternReason(item)}. Easy moves: ${easyActionText(patternActionForItem(item))}`,
-    simpleDetail: `Current watchout: ${patternPlainReason(item)}. Easy moves: ${easyActionText(patternActionForItem(item))}`,
+    detail: `${blockMeta.range}: possible ${move} concern - ${formatPatternReason(item)}. If this shows up again, ${action}`,
+    simpleDetail: `Watch ${patternPlainReason(item)}. If it shows up again, ${action}`,
     basis: "Best effort from current uploads; updates after each upload."
   };
 }
@@ -1971,16 +1984,16 @@ function patternPlainReason(item = {}) {
   const value = patternValueLabel(item);
   const source = item.source || item.key;
   const reason = String(item.reason || item.label || "").toLowerCase();
-  if (source === "glucose" && reason.includes("low")) return `glucose can dip${value ? ` (${value})` : ""}`;
-  if (source === "glucose") return `glucose can rise${value ? ` (${value})` : ""}`;
-  if (source === "heart_rate") return `HR can run high${value ? ` (${value})` : ""}`;
-  if (source === "hrv") return `HRV can dip${value ? ` (${value})` : ""}`;
-  if (source === "steps") return `movement can be light${value ? ` (${value})` : ""}`;
+  if (source === "glucose" && reason.includes("low")) return `glucose dipping${value ? ` (${value})` : ""}`;
+  if (source === "glucose") return `glucose rising${value ? ` (${value})` : ""}`;
+  if (source === "heart_rate") return `HR running high${value ? ` (${value})` : ""}`;
+  if (source === "hrv") return `HRV dipping${value ? ` (${value})` : ""}`;
+  if (source === "steps") return `light movement${value ? ` (${value})` : ""}`;
   return formatPatternReason(item);
 }
 
 function buildPatternPlainDetail(pattern, fallback = "") {
-  if (!pattern?.label) return fallback || "No clear spike or dip yet. Easy moves: drink water; eat normally; take an easy walk.";
+  if (!pattern?.label) return fallback || "No clear repeating spike or dip yet. Watch glucose, HR, HRV trend, and steps as more uploads arrive.";
   const reason = pattern.strongestReason ? patternPlainReason(pattern.strongestReason) : "";
   const window = pattern.label ? `${pattern.label[0].toUpperCase()}${pattern.label.slice(1)}` : "This window";
   const action = easyActionText(pattern.actionText || patternActionForItem(pattern.strongestReason || {}));
@@ -1988,9 +2001,9 @@ function buildPatternPlainDetail(pattern, fallback = "") {
     const prefix = pattern.level === "high" || pattern.unstableCount >= 2
       ? `${window} has been the least steady window.`
       : `${window} has a possible pattern.`;
-    return `${prefix} Watch ${reason}. Easy moves: ${action}`;
+    return `${prefix} Main concern: ${reason}. If it shows up again, ${action}`;
   }
-  return `${window} has the strongest pattern so far. Easy moves: ${action}`;
+  return `${window} has the strongest pattern so far. If it shows up again, ${action}`;
 }
 
 function estimateInstabilityPatterns({ readings = [], health = {}, now = new Date() } = {}) {
@@ -2037,19 +2050,19 @@ function estimateInstabilityPatterns({ readings = [], health = {}, now = new Dat
   const moveLabel = patternMoveLabel(prediction?.strongestReason);
   const actionText = prediction?.actionText || (prediction?.strongestReason ? patternActionForItem(prediction.strongestReason) : "");
   const predictionDetail = prediction && conditionText
-    ? `${prediction.range}: ${totalObservations >= 6 && prediction.observations >= 2 ? "repeated" : "possible"} ${moveLabel} signal - ${conditionText}. Easy moves: ${easyActionText(actionText || "water plus normal food more; easy walk more.")}`
+    ? `${prediction.range}: ${totalObservations >= 6 && prediction.observations >= 2 ? "repeated" : "possible"} ${moveLabel} concern - ${conditionText}. If this pattern shows up again, ${easyActionText(actionText || "water plus normal food more; easy walk more.")}`
     : null;
   const active = Boolean(predictionDetail && totalObservations >= 6 && prediction.observations >= 2);
   const bestEffortItem = predictionDetail ? null : latestActionablePatternItem({ readings, health, now });
   const bestEffort = bestEffortItem ? patternDetailForItem(bestEffortItem) : null;
-  const fallbackDetail = "No clear spike or dip yet. Easy moves: drink water; eat normally; take an easy walk.";
+  const fallbackDetail = "No clear repeating spike or dip yet. Watch glucose, HR, HRV trend, and steps as more uploads arrive.";
   const predictionBasis = active
     ? "Looks across 45 days and updates after each upload."
     : "Best effort from current uploads; updates after each upload.";
   const simpleDetail = prediction
     ? buildPatternPlainDetail(prediction, fallbackDetail)
     : (bestEffortItem
-      ? `Current watchout: ${patternPlainReason(bestEffortItem)}. Easy moves: ${easyActionText(patternActionForItem(bestEffortItem))}`
+      ? `Watch ${patternPlainReason(bestEffortItem)}. If it shows up again, ${easyActionText(patternActionForItem(bestEffortItem))}`
       : fallbackDetail);
 
   return {
@@ -2079,11 +2092,12 @@ function pushFactor(factors, key, label, points, reason, action) {
 }
 
 function conditionLevel(score) {
-  if (!Number.isFinite(Number(score))) return "Waiting for enough data.";
-  if (score <= 3.5) return "Looks steady.";
-  if (score <= 5.5) return "Slightly elevated.";
-  if (score <= 7.5) return "Elevated.";
-  return "High.";
+  const value = Number(score);
+  if (!Number.isFinite(value)) return "I need a little more source data before I can read your overall condition.";
+  if (value <= 3.5) return "You look steady in the latest Blood data.";
+  if (value <= 5.5) return "You look mostly steady in the latest Blood data.";
+  if (value <= 7.5) return "You look a little elevated in the latest Blood data.";
+  return "You look elevated in the latest Blood data.";
 }
 
 function glucoseConditionText(glucose, dynamics = []) {
@@ -2149,25 +2163,25 @@ function metricStateSummary({ glucose, heartRate, hrv, recentSteps, referenceAt 
   const watch = [];
 
   if (Number.isFinite(glucoseValue)) {
-    if (glucoseValue < 70) watch.push(`glucose is low at ${Math.round(glucoseValue)} mg/dL`);
-    else if (glucoseValue > 180) watch.push(`glucose is high at ${Math.round(glucoseValue)} mg/dL`);
-    else if (glucoseValue < 82) watch.push(`glucose is near the low edge at ${Math.round(glucoseValue)} mg/dL`);
-    else if (glucoseValue > 140) watch.push(`glucose is near the high edge at ${Math.round(glucoseValue)} mg/dL`);
-    else stable.push(`glucose ${Math.round(glucoseValue)} mg/dL is in range`);
+    if (glucoseValue < 70) watch.push(`low glucose at ${Math.round(glucoseValue)} mg/dL`);
+    else if (glucoseValue > 180) watch.push(`high glucose at ${Math.round(glucoseValue)} mg/dL`);
+    else if (glucoseValue < 82) watch.push(`glucose near the low edge at ${Math.round(glucoseValue)} mg/dL`);
+    else if (glucoseValue > 140) watch.push(`glucose near the high edge at ${Math.round(glucoseValue)} mg/dL`);
+    else stable.push(`glucose is in range at ${Math.round(glucoseValue)} mg/dL`);
   }
 
   if (Number.isFinite(hrValue)) {
-    if (hrValue >= 100) watch.push(`HR is high at ${Math.round(hrValue)} bpm`);
-    else if (hrValue >= 85) watch.push(`HR is raised at ${Math.round(hrValue)} bpm`);
-    else if (hrValue >= 55 && hrValue <= 75) stable.push(`HR ${Math.round(hrValue)} bpm is calm`);
-    else stable.push(`HR ${Math.round(hrValue)} bpm is not the main signal`);
+    if (hrValue >= 100) watch.push(`high HR at ${Math.round(hrValue)} bpm`);
+    else if (hrValue >= 85) watch.push(`raised HR at ${Math.round(hrValue)} bpm`);
+    else if (hrValue >= 55 && hrValue <= 75) stable.push(`HR is calm at ${Math.round(hrValue)} bpm`);
+    else stable.push(`HR looks acceptable at ${Math.round(hrValue)} bpm`);
   }
 
   if (Number.isFinite(hrvValue)) {
     if (isEstimatedHrvMetric(hrv)) {
-      stable.push("Estimated HRV looks normal for this Blood estimate");
+      stable.push("estimated HRV looks normal for this Blood estimate");
     } else if (hrvValue < 40) {
-      watch.push(`HRV is low at ${Math.round(hrvValue)} ms`);
+      watch.push(`low HRV at ${Math.round(hrvValue)} ms`);
     } else {
       stable.push(`HRV ${Math.round(hrvValue)} ms is in range`);
     }
@@ -2175,27 +2189,13 @@ function metricStateSummary({ glucose, heartRate, hrv, recentSteps, referenceAt 
 
   if (Number.isFinite(stepsValue)) {
     const stepsLabel = Math.round(stepsValue).toLocaleString("en-US");
-    if (stepsValue < 4000 && suppressLowSteps) stable.push(`${stepsLabel} steps logged so far today`);
-    else if (stepsValue < 4000) watch.push(`movement is light at ${stepsLabel} steps today`);
+    if (stepsValue < 4000 && suppressLowSteps) stable.push(`${stepsLabel} steps are logged so far today`);
+    else if (stepsValue < 4000) watch.push(`light movement at ${stepsLabel} steps today`);
     else if (stepsValue >= 8000) stable.push(`${stepsLabel} steps today is solid`);
     else stable.push(`${stepsLabel} steps today is moderate`);
   }
 
   return { stable, watch };
-}
-
-function cleanConditionReason(reason = "") {
-  return String(reason || "")
-    .replace(/ is too /g, " is ")
-    .replace(/ in the recent window/g, " today")
-    .replace(/ recent steps/g, " steps today")
-    .replace(/\.$/, "")
-    .trim();
-}
-
-function conditionActionLine(action = "") {
-  const easy = easyActionText(action || "Water plus normal food more; easy walk more.").replace(/\.$/, "");
-  return `Easy moves: ${easy}.`;
 }
 
 function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, referenceAt = null, hour = null, dynamics = [], factors = [] } = {}) {
@@ -2206,25 +2206,27 @@ function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, re
     .filter((factor) => !(factor.key === "hrv" && /estimated HRV (is )?(too )?low/i.test(factor.reason || "")))
     .sort((a, b) => Number(b.points) - Number(a.points));
   const actionSource = positiveFactors[0] || dynamics[0] || null;
-  const action = easyActionText(actionSource?.action || "Water plus normal food more; easy walk more.");
-  const coreRead = metricState.watch.length
-    ? `Main watch: ${metricState.watch.slice(0, 2).join("; ")}.`
-    : `No glucose or HR spike signal; ${metricState.stable.slice(0, 4).join(", ")}.`;
-  const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("Estimated HRV looks normal for this Blood estimate")
-    ? " Estimated HRV looks normal for this Blood estimate; it is not treated as a low-HRV alarm unless it drops against your own recent trend."
+  const stableRead = proseList(metricState.stable, 4);
+  const concernRead = proseList(metricState.watch, 2);
+  const coreRead = concernRead
+    ? `The main concern in this read is ${concernRead}.`
+    : stableRead
+      ? `${ucfirst(stableRead)}.`
+      : "I do not see enough current source data yet to make a confident read.";
+  const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("estimated HRV looks normal for this Blood estimate")
+    ? " Estimated HRV looks normal for this Blood estimate; I would only treat it as a concern if it drops against your recent trend."
     : "";
-  const watchouts = positiveFactors
-    .slice(0, 2)
-    .map((factor) => cleanConditionReason(factor.reason || factor.label || ""))
-    .filter(Boolean);
-  const watchPrefix = watchouts.length
-    ? `Closest lever: ${watchouts.join(" and ")}.`
-    : "Closest lever: keep the steady pattern going.";
+  const earlyStepsContext = metricState.stable.some((item) => /steps are logged so far today/.test(item));
+  const assessment = concernRead
+    ? "This is a watchful read, but it is still just the current source pattern."
+    : earlyStepsContext
+      ? "This is reassuring overall. The step count is just early-day context, not a problem signal yet."
+      : "This is reassuring overall.";
   return {
     label: "Overall condition",
     headline,
     summary: `${headline} ${coreRead}${hrvNote}`.trim(),
-    watch: `${watchPrefix} ${conditionActionLine(actionSource?.action || action)} Blood will change this if glucose moves fast, HR jumps, HRV drops against trend, or steps stay light.`,
+    watch: `${assessment} Personal source read, not a diagnosis.`,
     source: actionSource?.key || actionSource?.source || "none"
   };
 }

@@ -177,7 +177,7 @@ test("calculates estimated HRV from enough clean sleep heart-rate samples", () =
   assert.ok(health.latest.hrv.restWindowCount >= 4);
   assert.equal(health.trends.hrv.length, 1);
   assert.equal(health.anxiety.factors.some((factor) => factor.key === "hrv"), false);
-  assert.match(health.anxiety.condition.summary, /Estimated HRV looks normal for this Blood estimate/);
+  assert.match(health.anxiety.condition.summary, /estimated HRV looks normal for this Blood estimate/i);
 });
 
 test("does not estimate HRV from too few heart-rate samples", () => {
@@ -254,8 +254,9 @@ test("anxiety condition uses overall source state and one positive action", () =
   assert.equal(anxiety.suggestion.reason, "104 bpm HR is too high.");
   assert.equal(anxiety.suggestion.action, "Water more; protein/fiber snack more; easy walk more.");
   assert.equal(anxiety.condition.label, "Overall condition");
-  assert.match(anxiety.condition.summary, /Elevated|HR is high|HR is raised|glucose is steady/i);
-  assert.match(anxiety.condition.watch, /Easy moves:/);
+  assert.match(anxiety.condition.summary, /You look|main concern|high HR/i);
+  assert.match(anxiety.condition.watch, /watchful read|source pattern/i);
+  assert.doesNotMatch(`${anxiety.condition.summary} ${anxiety.condition.watch}`, /Easy moves|Closest lever|Blood will change this/i);
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
   assert.doesNotMatch(`${anxiety.suggestion.label} ${anxiety.suggestion.reason} ${anxiety.suggestion.action}`, /\bnow\b|outlier|\bless\b|avoid|restrict|reduce|stop/i);
 });
@@ -272,9 +273,10 @@ test("estimated HRV alone reads normal for the estimate instead of too low", () 
 
   assert.equal(anxiety.suggestion.label, "Overall condition");
   assert.notEqual(anxiety.suggestion.source, "hrv");
-  assert.match(anxiety.condition.summary, /Estimated HRV looks normal for this Blood estimate/);
+  assert.match(anxiety.condition.summary, /estimated HRV looks normal for this Blood estimate/i);
   assert.doesNotMatch(`${anxiety.suggestion.reason} ${anxiety.condition.summary} ${anxiety.condition.watch}`, /estimated HRV is too low|estimated HRV too low/i);
   assert.doesNotMatch(anxiety.condition.watch, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
+  assert.doesNotMatch(`${anxiety.condition.summary} ${anxiety.condition.watch}`, /Easy moves|Closest lever|Blood will change this/i);
 });
 
 test("early-day low steps do not become the main condition watchout", () => {
@@ -289,7 +291,7 @@ test("early-day low steps do not become the main condition watchout", () => {
 
   assert.ok(anxiety.score < 4.4);
   assert.doesNotMatch(text, /movement is light|steps today is too low|steps today is low/i);
-  assert.match(anxiety.condition.summary, /77 steps logged so far today/);
+  assert.match(anxiety.condition.summary, /77 steps are logged so far today/);
 });
 
 test("stale sleep does not drive the current anxiety action", () => {
@@ -481,7 +483,7 @@ test("sleep-only history stays off the visible pattern recommendation", () => {
   });
 
   assert.equal(patterns.status, "best_effort");
-  assert.match(patterns.detail, /No clear spike or dip yet|Easy moves/);
+  assert.match(patterns.detail, /No clear repeating spike or dip yet|Watch glucose, HR, HRV trend, and steps/i);
   assert.doesNotMatch(`${patterns.title} ${patterns.detail} ${patterns.prediction?.detail || ""}`, /sleep|asleep|too short|short|Need more|learning/i);
 });
 
@@ -500,8 +502,8 @@ test("thin data pattern still gives best-effort abnormal signal and action", () 
 
   assert.equal(patterns.status, "best_effort");
   assert.equal(patterns.title, "Things to watch");
-  assert.match(patterns.detail, /possible dip signal|HRV low|23 ms|Easy moves/);
-  assert.match(patterns.simpleDetail, /Things to watch|Current watchout|HRV can dip|Easy moves/i);
+  assert.match(patterns.detail, /possible dip concern|HRV low|23 ms|If this shows up again/);
+  assert.match(patterns.simpleDetail, /Watch|HRV dipping|If it shows up again/i);
   assert.match(patterns.detail, /drink water|eat protein\/fiber with carbs|take an easy walk/);
   assert.doesNotMatch(`${patterns.title} ${patterns.detail}`, /Need more|learning|sleep|asleep|too short|short|phone|screen|breath|task|\bless\b|avoid|restrict|reduce|stop/i);
 });
