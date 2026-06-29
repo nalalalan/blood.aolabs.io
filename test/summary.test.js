@@ -277,6 +277,21 @@ test("estimated HRV alone reads normal for the estimate instead of too low", () 
   assert.doesNotMatch(anxiety.condition.watch, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
 });
 
+test("early-day low steps do not become the main condition watchout", () => {
+  const anxiety = estimateAnxietyState({
+    glucose: { valueMgDl: 113 },
+    heartRate: { value: 84 },
+    hrv: { value: 23, estimated: true, derived: true },
+    recentSteps: 77,
+    referenceAt: "2026-06-29T05:32:00.000Z"
+  });
+  const text = `${anxiety.suggestion.reason} ${anxiety.condition.summary} ${anxiety.condition.watch}`;
+
+  assert.ok(anxiety.score < 4.4);
+  assert.doesNotMatch(text, /movement is light|steps today is too low|steps today is low/i);
+  assert.match(anxiety.condition.summary, /77 steps logged so far today/);
+});
+
 test("stale sleep does not drive the current anxiety action", () => {
   const anxiety = estimateAnxietyState({
     glucose: { valueMgDl: 104 },

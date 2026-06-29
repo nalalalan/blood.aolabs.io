@@ -2129,11 +2129,22 @@ function stepsConditionText(recentSteps) {
   return `${label} steps today is moderate.`;
 }
 
-function metricStateSummary({ glucose, heartRate, hrv, recentSteps } = {}) {
+function referenceEasternHour(referenceAt = null, hour = null) {
+  if (Number.isFinite(Number(hour))) return Number(hour);
+  const date = referenceAt ? new Date(referenceAt) : new Date();
+  return easternHour(date);
+}
+
+function earlyForLowStepSignal(referenceAt = null, hour = null) {
+  return referenceEasternHour(referenceAt, hour) < 10;
+}
+
+function metricStateSummary({ glucose, heartRate, hrv, recentSteps, referenceAt = null, hour = null } = {}) {
   const glucoseValue = Number(glucose?.valueMgDl ?? glucose?.value);
   const hrValue = Number(heartRate?.value);
   const hrvValue = Number(hrv?.value);
   const stepsValue = Number(recentSteps);
+  const suppressLowSteps = earlyForLowStepSignal(referenceAt, hour);
   const stable = [];
   const watch = [];
 
@@ -2164,7 +2175,8 @@ function metricStateSummary({ glucose, heartRate, hrv, recentSteps } = {}) {
 
   if (Number.isFinite(stepsValue)) {
     const stepsLabel = Math.round(stepsValue).toLocaleString("en-US");
-    if (stepsValue < 4000) watch.push(`movement is light at ${stepsLabel} steps today`);
+    if (stepsValue < 4000 && suppressLowSteps) stable.push(`${stepsLabel} steps logged so far today`);
+    else if (stepsValue < 4000) watch.push(`movement is light at ${stepsLabel} steps today`);
     else if (stepsValue >= 8000) stable.push(`${stepsLabel} steps today is solid`);
     else stable.push(`${stepsLabel} steps today is moderate`);
   }
@@ -2186,9 +2198,9 @@ function conditionActionLine(action = "") {
   return `Easy moves: ${easy}.`;
 }
 
-function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, dynamics = [], factors = [] } = {}) {
+function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, referenceAt = null, hour = null, dynamics = [], factors = [] } = {}) {
   const headline = conditionLevel(score);
-  const metricState = metricStateSummary({ glucose, heartRate, hrv, recentSteps });
+  const metricState = metricStateSummary({ glucose, heartRate, hrv, recentSteps, referenceAt, hour });
   const positiveFactors = factors
     .filter((factor) => factor?.key !== "sleep" && Number(factor.points) > 0)
     .filter((factor) => !(factor.key === "hrv" && /estimated HRV (is )?(too )?low/i.test(factor.reason || "")))
@@ -2197,7 +2209,7 @@ function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, dy
   const action = easyActionText(actionSource?.action || "Water plus normal food more; easy walk more.");
   const coreRead = metricState.watch.length
     ? `Main watch: ${metricState.watch.slice(0, 2).join("; ")}.`
-    : `No glucose or HR spike signal; ${metricState.stable.slice(0, 3).join(", ")}.`;
+    : `No glucose or HR spike signal; ${metricState.stable.slice(0, 4).join(", ")}.`;
   const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("Estimated HRV looks normal for this Blood estimate")
     ? " Estimated HRV looks normal for this Blood estimate; it is not treated as a low-HRV alarm unless it drops against your own recent trend."
     : "";
@@ -2291,7 +2303,11 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
 
   if (Number.isFinite(recentSteps)) {
     const stepsLabel = Math.round(recentSteps).toLocaleString("en-US");
-    if (recentSteps < 1500) {
+    const suppressLowSteps = earlyForLowStepSignal(referenceAt, hour);
+    if (recentSteps < 4000 && suppressLowSteps) {
+      // Early-day totals should not become an anxiety signal before the day has
+      // had time to accumulate ordinary movement.
+    } else if (recentSteps < 1500) {
       raw += 0.35;
       pushFactor(factors, "steps", "steps too low", 0.35, `${stepsLabel} steps today is too low.`, "Water more; normal meals more; easy walk more.");
     } else if (recentSteps < 4000) {
@@ -2340,6 +2356,8 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     heartRate,
     hrv,
     recentSteps,
+    referenceAt,
+    hour,
     dynamics: dynamicFactors,
     factors
   });
@@ -2495,11 +2513,13 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
   return points.slice(-limit);
 }
 
-function latestSourceEndpoint(...values) {
+function latestSourceEndpoint(now = new Date(), ...values) {
+  const nowTime = new Date(now).getTime();
   const latest = values
     .flat()
     .map((value) => new Date(value).getTime())
     .filter((time) => Number.isFinite(time))
+    .filter((time) => !Number.isFinite(nowTime) || time <= nowTime + 60_000)
     .sort((a, b) => b - a)[0];
   return Number.isFinite(latest) ? new Date(latest).toISOString() : null;
 }
