@@ -27,18 +27,12 @@ const manualTokenInput = document.getElementById("manual-token");
 const manualSubmit = document.getElementById("manual-submit");
 const manualStatus = document.getElementById("manual-status");
 const anxietyScore = document.getElementById("anxiety-score");
-const anxietyLabel = document.getElementById("anxiety-label");
 const metricGlucose = document.getElementById("metric-glucose");
 const metricHr = document.getElementById("metric-hr");
 const metricHrv = document.getElementById("metric-hrv");
 const metricSleep = document.getElementById("metric-sleep");
 const metricSteps = document.getElementById("metric-steps");
-const suggestionTime = document.getElementById("suggestion-time");
-const suggestionAction = document.getElementById("suggestion-action");
-const suggestionReason = document.getElementById("suggestion-reason");
-const patternTitle = document.getElementById("pattern-title");
-const patternDetail = document.getElementById("pattern-detail");
-const patternBasis = document.getElementById("pattern-basis");
+const healthRead = document.getElementById("health-read");
 
 const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
@@ -685,18 +679,21 @@ function setMetricValue(element, value) {
   element.classList.toggle("is-waiting", !value);
 }
 
-function renderPatterns(data) {
+function plainSentence(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function healthReadText(data) {
   const patterns = data?.patterns || {};
   const prediction = patterns.prediction || null;
-  if (patternTitle) {
-    patternTitle.textContent = "Things to watch";
-  }
-  if (patternDetail) {
-    patternDetail.textContent = patterns.simpleDetail || prediction?.simpleDetail || patterns.detail || prediction?.detail || "No clear spike or dip yet. Easy moves: drink water; eat normally; take an easy walk.";
-  }
-  if (patternBasis) {
-    patternBasis.textContent = patterns.basis || prediction?.basis || "Updates after each upload.";
-  }
+  const condition = data?.health?.anxiety?.condition || {};
+  const conditionText = condition.summary || "Blood is waiting for enough current glucose, HR, HRV trend, sleep, and step data to make a useful read.";
+  const watchText = patterns.simpleDetail || prediction?.simpleDetail || "";
+  const parts = [plainSentence(conditionText)];
+  if (watchText) parts.push(plainSentence(watchText));
+  return parts.join(" ");
 }
 
 function renderHealth(data) {
@@ -715,15 +712,12 @@ function renderHealth(data) {
     anxietyScore.classList.remove("is-loading");
     anxietyScore.textContent = formatScore10(anxiety.score);
   }
-  if (anxietyLabel) {
-    anxietyLabel.textContent = health.lastCapturedAt
-      ? `Source read ${formatDateTime(health.lastCapturedAt)}.`
-      : "Waiting for current metrics.";
-  }
   if (freshnessLine) {
     freshnessLine.textContent = sourceFreshnessText(data);
   }
-  renderPatterns(data);
+  if (healthRead) {
+    healthRead.textContent = healthReadText(data);
+  }
 
   setMetricValue(metricGlucose, glucose?.valueMgDl ? `${glucose.valueMgDl} mg/dL` : "");
   setMetricValue(metricHr, heartRate?.value ? `${heartRate.value} bpm` : "");
@@ -731,17 +725,6 @@ function renderHealth(data) {
   setMetricValue(metricSleep, asleepMinutes != null && Number.isFinite(Number(asleepMinutes)) ? formatHours(asleepMinutes) : "");
   setMetricValue(metricSteps, stepCount != null && Number.isFinite(Number(stepCount)) ? `${formatNumber(stepCount)} steps` : "");
 
-  const condition = anxiety.condition || {};
-  const suggestion = anxiety.suggestion || {};
-  if (suggestionTime) {
-    suggestionTime.textContent = condition.label || suggestion.label || "Overall condition";
-  }
-  if (suggestionAction) {
-    suggestionAction.textContent = condition.summary || "Blood will read the current glucose, HR, HRV trend, sleep, and steps together.";
-  }
-  if (suggestionReason) {
-    suggestionReason.textContent = condition.watch || anxiety.note || "Source-bounded personal health read, not diagnosis.";
-  }
 }
 
 function renderData(data) {

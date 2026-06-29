@@ -16,6 +16,16 @@ const {
   summarizeReadings
 } = require("../server");
 
+test("top health strip renders one readable health text block", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
+  assert.match(html, /id="health-read"/);
+  assert.doesNotMatch(html, /suggestion-reason|pattern-basis|pattern-detail|suggestion-time|suggestion-action|anxiety-label/);
+  assert.doesNotMatch(app, /condition\.watch|patternBasis|patternDetail|suggestionReason|anxietyLabel/);
+  assert.doesNotMatch(css, /pattern-card|health-suggestion small|anxiety-readout p/);
+});
+
 test("normalizes mmol/L readings to mg/dL", () => {
   assert.equal(normalizeGlucoseMgDl({ value: "5.5", unit: "mmol/L" }), 99);
 });

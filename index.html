@@ -33,7 +33,7 @@
   <link rel="icon" href="./icon.svg?v=20260627-suite-drop" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg?v=20260627-suite-drop">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20260629-hr-history-v1">
+  <link rel="stylesheet" href="./styles.css?v=20260629-single-read-v1">
 </head>
 <body>
   <header class="suite-topbar" aria-label="blood navigation">
@@ -70,17 +70,9 @@
             <strong id="anxiety-score" class="is-loading">Loading</strong>
             <small>/10</small>
           </div>
-          <p id="anxiety-label">Checking source read.</p>
         </div>
-        <div class="health-suggestion">
-          <strong id="suggestion-time">Overall condition</strong>
-          <span id="suggestion-action">Loading current condition.</span>
-          <small id="suggestion-reason">Simple source read, not diagnosis.</small>
-        </div>
-        <div class="pattern-card" aria-label="instability pattern">
-          <strong id="pattern-title">Things to watch</strong>
-          <span id="pattern-detail">Checking glucose, HR, HRV change, and steps.</span>
-          <small id="pattern-basis">Recalculates after each upload.</small>
+        <div class="health-suggestion" aria-label="Blood health read">
+          <span id="health-read">Loading current health read.</span>
         </div>
       </div>
 
@@ -243,6 +235,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=20260629-hrv-context-v1" defer></script>
+  <script src="./app.js?v=20260629-single-read-v1" defer></script>
 </body>
 </html>
