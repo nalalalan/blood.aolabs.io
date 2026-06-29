@@ -13,6 +13,9 @@ const DATABASE_URL = process.env.DATABASE_URL || "";
 const MAX_STORED_READINGS = Number.parseInt(process.env.BLOOD_MAX_READINGS || "5000", 10);
 const MAX_STORED_HEALTH_METRICS = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS || "12000", 10);
 const MAX_HEALTH_METRICS_PER_TYPE = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS_PER_TYPE || "30000", 10);
+const MAX_HEART_RATE_HISTORY_METRICS = Number.parseInt(process.env.BLOOD_MAX_HEART_RATE_HISTORY_METRICS || String(MAX_HEALTH_METRICS_PER_TYPE), 10);
+const MAX_HEART_RATE_TREND_POINTS = Number.parseInt(process.env.BLOOD_MAX_HEART_RATE_TREND_POINTS || "10000", 10);
+const HEART_RATE_TREND_BUCKET_MINUTES = Number.parseInt(process.env.BLOOD_HEART_RATE_BUCKET_MINUTES || "5", 10);
 const JSON_BODY_LIMIT = process.env.BLOOD_JSON_LIMIT || "8mb";
 const PUBLIC_MIN_READING_DATE = process.env.BLOOD_PUBLIC_MIN_DATE || "2026-01-01";
 const SLEEP_SUMMARY_URL = process.env.BLOOD_SLEEP_SUMMARY_URL || "https://sleep.aolabs.io/api/sleep/summary";
@@ -670,6 +673,29 @@ async function writeJsonHealthMetrics(metrics) {
   await fs.rename(tmp, HEALTH_FILE);
 }
 
+function healthMetricStorageLimit(type) {
+  if (type === "heart_rate") return MAX_HEART_RATE_HISTORY_METRICS;
+  if (type === "sleep") return 730;
+  if (type === "steps") return 5000;
+  if (type === "hrv") return 5000;
+  return Math.max(1000, Math.min(MAX_STORED_HEALTH_METRICS, MAX_HEALTH_METRICS_PER_TYPE));
+}
+
+function pruneHealthMetricsForStorage(metrics = []) {
+  const byType = new Map();
+  for (const metric of metrics) {
+    const type = metric?.type || "unknown";
+    const bucket = byType.get(type) || [];
+    bucket.push(metric);
+    byType.set(type, bucket);
+  }
+  return Array.from(byType.entries())
+    .flatMap(([type, bucket]) => bucket
+      .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
+      .slice(0, healthMetricStorageLimit(type)))
+    .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
+}
+
 async function readReadings() {
   const pool = await getPgPool();
   if (pool) {
@@ -731,8 +757,35 @@ async function readHealthMetrics() {
   if (pool) {
     await ensureDb();
     const result = await pool.query(
-      "SELECT payload FROM health_metrics ORDER BY measured_at DESC LIMIT $1",
-      [MAX_STORED_HEALTH_METRICS]
+      `
+        SELECT payload
+        FROM (
+          SELECT
+            payload,
+            metric_type,
+            measured_at,
+            row_number() OVER (
+              PARTITION BY metric_type
+              ORDER BY measured_at DESC, updated_at DESC
+            ) AS rn
+          FROM health_metrics
+        ) ranked
+        WHERE rn <= CASE metric_type
+          WHEN 'heart_rate' THEN $1::bigint
+          WHEN 'sleep' THEN $2::bigint
+          WHEN 'steps' THEN $3::bigint
+          WHEN 'hrv' THEN $4::bigint
+          ELSE $5::bigint
+        END
+        ORDER BY measured_at DESC
+      `,
+      [
+        healthMetricStorageLimit("heart_rate"),
+        healthMetricStorageLimit("sleep"),
+        healthMetricStorageLimit("steps"),
+        healthMetricStorageLimit("hrv"),
+        healthMetricStorageLimit("other")
+      ]
     );
     return result.rows.map((row) => row.payload);
   }
@@ -819,9 +872,7 @@ async function storeHealthMetrics(metrics) {
   const existing = await readJsonHealthMetrics();
   const byId = new Map(existing.map((metric) => [metric.metricId, metric]));
   for (const metric of metrics) byId.set(metric.metricId, metric);
-  const next = Array.from(byId.values())
-    .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())
-    .slice(0, MAX_STORED_HEALTH_METRICS);
+  const next = pruneHealthMetricsForStorage(Array.from(byId.values()));
   await writeJsonHealthMetrics(next);
 }
 
@@ -1148,6 +1199,63 @@ function metricTrend(metrics, type, limit = 900) {
       confidence: metric.confidence,
       restWindowCount: metric.restWindowCount,
       windowMinutes: metric.windowMinutes
+    }));
+}
+
+function bucketedMedianMetric(records, bucketMs, useLatestValue = false) {
+  const sorted = [...records].sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  const latest = sorted.at(-1);
+  const values = sorted.map((record) => Number(record.value)).filter(Number.isFinite).sort((a, b) => a - b);
+  const value = useLatestValue && latest ? Number(latest.value) : median(values);
+  return {
+    ...latest,
+    measuredAt: latest?.measuredAt,
+    capturedAt: sorted
+      .map((record) => record.capturedAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || latest?.capturedAt,
+    value: Number(Math.round(Number(value))),
+    aggregation: `median_${Math.round(bucketMs / 60000)}min`,
+    sampleCount: sorted.length
+  };
+}
+
+function heartRateTrend(metrics, limit = MAX_HEART_RATE_TREND_POINTS) {
+  const points = metrics
+    .filter((metric) => metric.type === "heart_rate")
+    .filter((metric) => metric.measuredAt && Number.isFinite(Number(metric.value)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  if (points.length <= 1) return metricTrend(points, "heart_rate", limit);
+  const bucketMinutes = Math.max(1, HEART_RATE_TREND_BUCKET_MINUTES);
+  const bucketMs = bucketMinutes * 60 * 1000;
+  const latestTime = new Date(points.at(-1).measuredAt).getTime();
+  const latestBucket = Math.floor(latestTime / bucketMs);
+  const buckets = new Map();
+  for (const point of points) {
+    const time = new Date(point.measuredAt).getTime();
+    if (!Number.isFinite(time)) continue;
+    const bucketKey = Math.floor(time / bucketMs);
+    const bucket = buckets.get(bucketKey) || [];
+    bucket.push(point);
+    buckets.set(bucketKey, bucket);
+  }
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucketKey, records]) => bucketedMedianMetric(records, bucketMs, bucketKey === latestBucket))
+    .slice(-limit)
+    .map((metric) => ({
+      metricId: metric.metricId,
+      type: metric.type,
+      source: metric.source,
+      sourcePackage: metric.sourcePackage,
+      measuredAt: metric.measuredAt,
+      date: metric.date,
+      value: Number(metric.value),
+      unit: metric.unit,
+      capturedAt: metric.capturedAt,
+      aggregation: metric.aggregation,
+      sampleCount: metric.sampleCount
     }));
 }
 
@@ -2021,31 +2129,90 @@ function stepsConditionText(recentSteps) {
   return `${label} steps today is moderate.`;
 }
 
+function metricStateSummary({ glucose, heartRate, hrv, recentSteps } = {}) {
+  const glucoseValue = Number(glucose?.valueMgDl ?? glucose?.value);
+  const hrValue = Number(heartRate?.value);
+  const hrvValue = Number(hrv?.value);
+  const stepsValue = Number(recentSteps);
+  const stable = [];
+  const watch = [];
+
+  if (Number.isFinite(glucoseValue)) {
+    if (glucoseValue < 70) watch.push(`glucose is low at ${Math.round(glucoseValue)} mg/dL`);
+    else if (glucoseValue > 180) watch.push(`glucose is high at ${Math.round(glucoseValue)} mg/dL`);
+    else if (glucoseValue < 82) watch.push(`glucose is near the low edge at ${Math.round(glucoseValue)} mg/dL`);
+    else if (glucoseValue > 140) watch.push(`glucose is near the high edge at ${Math.round(glucoseValue)} mg/dL`);
+    else stable.push(`glucose ${Math.round(glucoseValue)} mg/dL is in range`);
+  }
+
+  if (Number.isFinite(hrValue)) {
+    if (hrValue >= 100) watch.push(`HR is high at ${Math.round(hrValue)} bpm`);
+    else if (hrValue >= 85) watch.push(`HR is raised at ${Math.round(hrValue)} bpm`);
+    else if (hrValue >= 55 && hrValue <= 75) stable.push(`HR ${Math.round(hrValue)} bpm is calm`);
+    else stable.push(`HR ${Math.round(hrValue)} bpm is not the main signal`);
+  }
+
+  if (Number.isFinite(hrvValue)) {
+    if (isEstimatedHrvMetric(hrv)) {
+      stable.push("Estimated HRV looks normal for this Blood estimate");
+    } else if (hrvValue < 40) {
+      watch.push(`HRV is low at ${Math.round(hrvValue)} ms`);
+    } else {
+      stable.push(`HRV ${Math.round(hrvValue)} ms is in range`);
+    }
+  }
+
+  if (Number.isFinite(stepsValue)) {
+    const stepsLabel = Math.round(stepsValue).toLocaleString("en-US");
+    if (stepsValue < 4000) watch.push(`movement is light at ${stepsLabel} steps today`);
+    else if (stepsValue >= 8000) stable.push(`${stepsLabel} steps today is solid`);
+    else stable.push(`${stepsLabel} steps today is moderate`);
+  }
+
+  return { stable, watch };
+}
+
+function cleanConditionReason(reason = "") {
+  return String(reason || "")
+    .replace(/ is too /g, " is ")
+    .replace(/ in the recent window/g, " today")
+    .replace(/ recent steps/g, " steps today")
+    .replace(/\.$/, "")
+    .trim();
+}
+
+function conditionActionLine(action = "") {
+  const easy = easyActionText(action || "Water plus normal food more; easy walk more.").replace(/\.$/, "");
+  return `Easy moves: ${easy}.`;
+}
+
 function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, dynamics = [], factors = [] } = {}) {
   const headline = conditionLevel(score);
-  const pieces = [
-    glucoseConditionText(glucose, dynamics),
-    heartRateConditionText(heartRate),
-    hrvConditionText(hrv, dynamics),
-    stepsConditionText(recentSteps)
-  ].filter(Boolean);
+  const metricState = metricStateSummary({ glucose, heartRate, hrv, recentSteps });
   const positiveFactors = factors
     .filter((factor) => factor?.key !== "sleep" && Number(factor.points) > 0)
     .filter((factor) => !(factor.key === "hrv" && /estimated HRV (is )?(too )?low/i.test(factor.reason || "")))
     .sort((a, b) => Number(b.points) - Number(a.points));
   const actionSource = positiveFactors[0] || dynamics[0] || null;
   const action = easyActionText(actionSource?.action || "Water plus normal food more; easy walk more.");
+  const coreRead = metricState.watch.length
+    ? `Main watch: ${metricState.watch.slice(0, 2).join("; ")}.`
+    : `No glucose or HR spike signal; ${metricState.stable.slice(0, 3).join(", ")}.`;
+  const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("Estimated HRV looks normal for this Blood estimate")
+    ? " Estimated HRV looks normal for this Blood estimate; it is not treated as a low-HRV alarm unless it drops against your own recent trend."
+    : "";
   const watchouts = positiveFactors
     .slice(0, 2)
-    .map((factor) => String(factor.reason || factor.label || "").replace(/ is too /g, " is ").replace(/\.$/, ""))
+    .map((factor) => cleanConditionReason(factor.reason || factor.label || ""))
     .filter(Boolean);
+  const watchPrefix = watchouts.length
+    ? `Closest lever: ${watchouts.join(" and ")}.`
+    : "Closest lever: keep the steady pattern going.";
   return {
     label: "Overall condition",
     headline,
-    summary: `${headline} ${pieces.slice(0, 4).join(" ")}`.trim(),
-    watch: watchouts.length
-      ? `Watch ${watchouts.join(" and ")}. Easy moves: ${action}`
-      : `No strong action signal from current glucose, HR, HRV trend, or steps. Easy moves: ${action}`,
+    summary: `${headline} ${coreRead}${hrvNote}`.trim(),
+    watch: `${watchPrefix} ${conditionActionLine(actionSource?.action || action)} Blood will change this if glucose moves fast, HR jumps, HRV drops against trend, or steps stay light.`,
     source: actionSource?.key || actionSource?.source || "none"
   };
 }
@@ -2123,15 +2290,16 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
   }
 
   if (Number.isFinite(recentSteps)) {
+    const stepsLabel = Math.round(recentSteps).toLocaleString("en-US");
     if (recentSteps < 1500) {
       raw += 0.35;
-      pushFactor(factors, "steps", "steps too low", 0.35, `${recentSteps} steps in the recent window is too low.`, "Water more; normal meals more; easy walk more.");
+      pushFactor(factors, "steps", "steps too low", 0.35, `${stepsLabel} steps today is too low.`, "Water more; normal meals more; easy walk more.");
     } else if (recentSteps < 4000) {
       raw += 0.15;
-      pushFactor(factors, "steps", "steps light", 0.15, `${recentSteps} recent steps is light.`, "Water more; normal meals more; easy walk more.");
+      pushFactor(factors, "steps", "steps light", 0.15, `${stepsLabel} steps today is light.`, "Water more; normal meals more; easy walk more.");
     } else if (recentSteps >= 8000) {
       raw -= 0.25;
-      pushFactor(factors, "steps", "steps good", -0.25, `${recentSteps} recent steps is solid.`, "Water after movement more; steady movement more.");
+      pushFactor(factors, "steps", "steps good", -0.25, `${stepsLabel} steps today is solid.`, "Water after movement more; steady movement more.");
     }
   }
 
@@ -2390,7 +2558,7 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     lastCapturedAt,
     latest,
     trends: {
-      heartRate: metricTrend(normalized, "heart_rate"),
+      heartRate: heartRateTrend(normalized),
       hrv: hrvSeries,
       sleep: sleepTrend(normalized, sleep),
       steps: stepsTrend(normalized)
@@ -2655,6 +2823,9 @@ app.use((req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   const status = error.status || 500;
+  if (status >= 500) {
+    console.error("[blood-api-error]", error?.message || error);
+  }
   res.status(status).json({
     ok: false,
     error: status >= 500 ? "server_error" : error.message,

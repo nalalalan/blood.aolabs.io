@@ -125,6 +125,30 @@ test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
   assert.equal(health.anxiety.suggestion.source, "heart_rate");
 });
 
+test("heart-rate trend preserves multiple days of dense watch history", () => {
+  const start = Date.UTC(2026, 5, 26, 0, 0, 0);
+  const heartRate = Array.from({ length: 3 * 24 * 60 }, (_, index) => ({
+    measuredAt: new Date(start + index * 60_000).toISOString(),
+    valueBpm: index === (3 * 24 * 60) - 1 ? 88 : 62 + (index % 35)
+  }));
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-29T00:00:00.000Z",
+    heartRate
+  });
+  const health = summarizeHealthMetrics(metrics, null, null, new Date("2026-06-29T00:00:00.000Z"));
+  const trend = health.trends.heartRate;
+  const days = new Set(trend.map((point) => point.measuredAt.slice(0, 10)));
+
+  assert.ok(trend.length < heartRate.length);
+  assert.ok(trend.length >= 800);
+  assert.ok(days.has("2026-06-26"));
+  assert.ok(days.has("2026-06-27"));
+  assert.ok(days.has("2026-06-28"));
+  assert.equal(trend.at(-1).value, 88);
+  assert.equal(health.latest.heartRate.value, 88);
+});
+
 test("calculates estimated HRV from enough clean sleep heart-rate samples", () => {
   const heartRate = Array.from({ length: 180 }, (_, index) => ({
     measuredAt: new Date(Date.UTC(2026, 5, 27, 2, index, 0)).toISOString(),
