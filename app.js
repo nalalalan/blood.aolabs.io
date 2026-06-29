@@ -249,6 +249,7 @@ function hrvDetailLabel(metric) {
   if (Number.isFinite(Number(metric?.restWindowCount))) parts.push(`${metric.restWindowCount} windows`);
   if (Number.isFinite(Number(metric?.pairCount))) parts.push(`${metric.pairCount} pairs`);
   if (Number.isFinite(Number(metric?.medianGapMinutes))) parts.push(`${metric.medianGapMinutes} min median gap`);
+  if (Number.isFinite(Number(metric?.windowSpreadMs))) parts.push(`${metric.windowSpreadMs} ms window spread`);
   return parts.join(", ");
 }
 
@@ -314,7 +315,7 @@ function visibleSeriesPoints(points, window) {
 }
 
 function lineSeriesPoints(points, visiblePoints, window, key) {
-  if (!window || activeRange === "all" || !["sleep", "steps"].includes(key)) return visiblePoints;
+  if (!window || activeRange === "all" || !["hrv", "sleep", "steps"].includes(key)) return visiblePoints;
   const before = [...points].reverse().find((point) => pointPlotTime(point) < window.min);
   const after = points.find((point) => pointPlotTime(point) > window.max);
   return [before, ...visiblePoints, after]

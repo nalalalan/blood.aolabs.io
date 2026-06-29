@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   normalizeGlucoseMgDl,
   parseContourCsv,
@@ -172,12 +174,46 @@ test("calculates estimated HRV from enough clean sleep heart-rate samples", () =
   assert.equal(health.latest.hrv.sampleCount, 180);
   assert.ok(health.latest.hrv.pairCount >= 120);
   assert.ok(health.latest.hrv.coverageRatio >= 0.9);
+  assert.equal(health.latest.hrv.windowSpreadMs, 0);
   assert.equal(health.latest.hrv.quality, "sleep_dense_hr_estimate");
   assert.equal(health.latest.hrv.confidence, "highest_available_without_beat_intervals");
   assert.ok(health.latest.hrv.restWindowCount >= 4);
   assert.equal(health.trends.hrv.length, 1);
   assert.equal(health.anxiety.factors.some((factor) => factor.key === "hrv"), false);
   assert.match(health.anxiety.condition.summary, /estimated HRV looks normal for this Blood estimate/i);
+});
+
+test("estimated HRV ignores sparse sleep boundary samples", () => {
+  const start = Date.UTC(2026, 5, 27, 2, 0, 0);
+  const heartRate = [
+    ...Array.from({ length: 18 }, (_, index) => ({
+      measuredAt: new Date(start + index * 60_000).toISOString(),
+      valueBpm: index % 2 === 0 ? 60 : 62
+    })),
+    ...Array.from({ length: 18 }, (_, index) => ({
+      measuredAt: new Date(Date.UTC(2026, 5, 27, 5, 0, 0) + index * 60_000).toISOString(),
+      valueBpm: index % 2 === 0 ? 60 : 62
+    }))
+  ];
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-27T12:00:00.000Z",
+    heartRate,
+    sleepSessions: [{
+      startTime: "2026-06-27T02:00:00.000Z",
+      endTime: "2026-06-27T05:30:00.000Z"
+    }]
+  });
+  const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
+
+  assert.equal(health.latest.hrv, null);
+  assert.deepEqual(health.trends.hrv, []);
+});
+
+test("HRV graph uses adjacent context points in short ranges", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+
+  assert.match(appSource, /\["hrv",\s*"sleep",\s*"steps"\]\.includes\(key\)/);
 });
 
 test("does not estimate HRV from too few heart-rate samples", () => {

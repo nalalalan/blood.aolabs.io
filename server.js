@@ -1058,13 +1058,21 @@ function medianAbsoluteDeviation(values, center = median(values)) {
 }
 
 function hrvSleepWindows(metrics, date) {
+  const edgeTrimMs = 12 * 60 * 1000;
   return metrics
     .filter((metric) => metric.type === "sleep" && metric.startTime && metric.endTime)
     .filter((metric) => metric.date === date || metric.endTime.slice(0, 10) === date || metric.startTime.slice(0, 10) === date)
-    .map((metric) => ({
-      start: new Date(metric.startTime).getTime(),
-      end: new Date(metric.endTime).getTime()
-    }))
+    .map((metric) => {
+      const start = new Date(metric.startTime).getTime();
+      const end = new Date(metric.endTime).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+      const trimmedStart = start + edgeTrimMs;
+      const trimmedEnd = end - edgeTrimMs;
+      return trimmedEnd - trimmedStart >= 20 * 60 * 1000
+        ? { start: trimmedStart, end: trimmedEnd, trimmed: true }
+        : { start, end, trimmed: false };
+    })
+    .filter(Boolean)
     .filter((window) => Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start);
 }
 
@@ -1072,13 +1080,43 @@ function pointInWindows(point, windows) {
   return windows.some((window) => point.time >= window.start && point.time <= window.end);
 }
 
-function hrvCandidateWindow(points, maxPairGapMs = 2.5 * 60 * 1000) {
-  if (points.length < 18) return null;
+const HRV_SLEEP_ESTIMATE_OPTIONS = {
+  maxPairGapMs: 2 * 60 * 1000,
+  maxInternalGapMs: 2.25 * 60 * 1000,
+  minPoints: 24,
+  minPairs: 20,
+  minDurationMinutes: 22,
+  maxMedianGapMinutes: 1.75,
+  minCoverageRatio: 0.86,
+  maxMedianBpm: 88,
+  maxBpmStdDev: 5.5,
+  maxBpmStepMedian: 2.8,
+  maxBpmStepP90: 6.5,
+  maxRrDiffP90: 135
+};
+
+const HRV_REST_ESTIMATE_OPTIONS = {
+  maxPairGapMs: 1.75 * 60 * 1000,
+  maxInternalGapMs: 2 * 60 * 1000,
+  minPoints: 30,
+  minPairs: 26,
+  minDurationMinutes: 24,
+  maxMedianGapMinutes: 1.5,
+  minCoverageRatio: 0.9,
+  maxMedianBpm: 78,
+  maxBpmStdDev: 4.5,
+  maxBpmStepMedian: 2.4,
+  maxBpmStepP90: 5.5,
+  maxRrDiffP90: 120
+};
+
+function hrvCandidateWindow(points, options = HRV_SLEEP_ESTIMATE_OPTIONS) {
+  if (points.length < options.minPoints) return null;
 
   const pairDetails = [];
   for (let index = 1; index < points.length; index += 1) {
     const gapMs = points[index].time - points[index - 1].time;
-    if (gapMs <= 0 || gapMs > maxPairGapMs) continue;
+    if (gapMs <= 0 || gapMs > options.maxPairGapMs) continue;
     const rrDiff = points[index].rrMs - points[index - 1].rrMs;
     pairDetails.push({
       squared: rrDiff * rrDiff,
@@ -1087,7 +1125,7 @@ function hrvCandidateWindow(points, maxPairGapMs = 2.5 * 60 * 1000) {
       bpmStep: Math.abs(points[index].value - points[index - 1].value)
     });
   }
-  if (pairDetails.length < 14) return null;
+  if (pairDetails.length < options.minPairs) return null;
 
   const bpmValues = points.map((point) => point.value);
   const bpmMedian = median(bpmValues);
@@ -1101,13 +1139,13 @@ function hrvCandidateWindow(points, maxPairGapMs = 2.5 * 60 * 1000) {
   const durationMinutes = (points[points.length - 1].time - points[0].time) / 60_000;
   const medianGap = median(pairDetails.map((pair) => pair.gapMinutes)) || 0;
   const coverageRatio = pairDetails.length / Math.max(1, points.length - 1);
-  if (durationMinutes < 18 || medianGap <= 0 || medianGap > 2.25 || coverageRatio < 0.8) return null;
-  if (bpmMedian > 92 || bpmStdDev > 7 || bpmStepMedian > 3.5 || bpmStepP90 > 8 || rrDiffP90 > 160) return null;
+  if (durationMinutes < options.minDurationMinutes || medianGap <= 0 || medianGap > options.maxMedianGapMinutes || coverageRatio < options.minCoverageRatio) return null;
+  if (bpmMedian > options.maxMedianBpm || bpmStdDev > options.maxBpmStdDev || bpmStepMedian > options.maxBpmStepMedian || bpmStepP90 > options.maxBpmStepP90 || rrDiffP90 > options.maxRrDiffP90) return null;
 
-  const maxBpmStep = Math.max(6, bpmStepMedian + (medianAbsoluteDeviation(bpmSteps, bpmStepMedian) * 4));
-  const maxRrDiff = Math.max(80, rrDiffMedian + (medianAbsoluteDeviation(rrDiffs, rrDiffMedian) * 4));
+  const maxBpmStep = Math.min(options.maxBpmStepP90, Math.max(options.maxBpmStepMedian * 1.4, bpmStepMedian + (medianAbsoluteDeviation(bpmSteps, bpmStepMedian) * 3)));
+  const maxRrDiff = Math.min(options.maxRrDiffP90, Math.max(70, rrDiffMedian + (medianAbsoluteDeviation(rrDiffs, rrDiffMedian) * 3)));
   const acceptedPairs = pairDetails.filter((pair) => pair.bpmStep <= maxBpmStep && pair.rrDiffAbs <= maxRrDiff);
-  if (acceptedPairs.length < 14 || acceptedPairs.length / pairDetails.length < 0.82) return null;
+  if (acceptedPairs.length < options.minPairs || acceptedPairs.length / pairDetails.length < 0.88) return null;
 
   const rmssd = Math.sqrt(acceptedPairs.reduce((sum, pair) => sum + pair.squared, 0) / acceptedPairs.length);
   if (!Number.isFinite(rmssd) || rmssd < 1 || rmssd > 300) return null;
@@ -1132,7 +1170,7 @@ function hrvCandidateWindow(points, maxPairGapMs = 2.5 * 60 * 1000) {
   };
 }
 
-function hrvWindowCandidates(points) {
+function hrvWindowCandidates(points, options = HRV_SLEEP_ESTIMATE_OPTIONS) {
   const candidates = [];
   const windowMinutes = 30;
   for (let start = 0; start < points.length; start += 1) {
@@ -1143,11 +1181,11 @@ function hrvWindowCandidates(points) {
       if (point.time - startTime > windowMinutes * 60_000) break;
       if (windowPoints.length) {
         const gapMs = point.time - windowPoints[windowPoints.length - 1].time;
-        if (gapMs > 3 * 60 * 1000) break;
+        if (gapMs > options.maxInternalGapMs) break;
       }
       windowPoints.push(point);
     }
-    const candidate = hrvCandidateWindow(windowPoints);
+    const candidate = hrvCandidateWindow(windowPoints, options);
     if (candidate) candidates.push(candidate);
   }
   return candidates;
@@ -1163,12 +1201,26 @@ function hrvOverlapRatio(candidate, selected) {
 function selectHrvCandidates(candidates, limit = 8) {
   const selected = [];
   for (const candidate of [...candidates].sort((a, b) => a.score - b.score)) {
-    if (selected.every((existing) => hrvOverlapRatio(candidate, existing) <= 0.2 && hrvOverlapRatio(existing, candidate) <= 0.2)) {
+    if (selected.every((existing) => hrvOverlapRatio(candidate, existing) <= 0.15 && hrvOverlapRatio(existing, candidate) <= 0.15)) {
       selected.push(candidate);
       if (selected.length >= limit) break;
     }
   }
   return selected;
+}
+
+function weightedMedianCandidates(candidates) {
+  const sorted = [...candidates]
+    .filter((candidate) => Number.isFinite(Number(candidate.value)) && Number.isFinite(Number(candidate.pairCount)) && candidate.pairCount > 0)
+    .sort((a, b) => a.value - b.value);
+  const totalWeight = sorted.reduce((sum, candidate) => sum + candidate.pairCount, 0);
+  if (!totalWeight) return null;
+  let running = 0;
+  for (const candidate of sorted) {
+    running += candidate.pairCount;
+    if (running >= totalWeight / 2) return candidate.value;
+  }
+  return sorted.at(-1)?.value ?? null;
 }
 
 function metricTrend(metrics, type, limit = 900) {
@@ -1198,6 +1250,7 @@ function metricTrend(metrics, type, limit = 900) {
       coverageRatio: metric.coverageRatio,
       confidence: metric.confidence,
       restWindowCount: metric.restWindowCount,
+      windowSpreadMs: metric.windowSpreadMs,
       windowMinutes: metric.windowMinutes
     }));
 }
@@ -1281,41 +1334,46 @@ function calculatedHrvTrend(metrics, limit = 90) {
       }
     }
     const points = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
-    if (points.length < 10) continue;
+    if (points.length < HRV_SLEEP_ESTIMATE_OPTIONS.minPoints) continue;
 
     const sleepWindows = hrvSleepWindows(metrics, date);
     const sleepPoints = sleepWindows.length ? points.filter((point) => pointInWindows(point, sleepWindows)) : [];
-    let basis = sleepPoints.length >= 10 ? "sleep_heart_rate_samples" : "resting_heart_rate_samples";
-    let candidates = hrvWindowCandidates(sleepPoints.length >= 10 ? sleepPoints : points);
+    let basis = sleepPoints.length >= HRV_SLEEP_ESTIMATE_OPTIONS.minPoints ? "sleep_heart_rate_samples" : "resting_heart_rate_samples";
+    let candidates = hrvWindowCandidates(
+      sleepPoints.length >= HRV_SLEEP_ESTIMATE_OPTIONS.minPoints ? sleepPoints : points,
+      basis === "sleep_heart_rate_samples" ? HRV_SLEEP_ESTIMATE_OPTIONS : HRV_REST_ESTIMATE_OPTIONS
+    );
     if (basis === "sleep_heart_rate_samples" && !candidates.length) {
       basis = "resting_heart_rate_samples";
-      candidates = hrvWindowCandidates(points);
+      candidates = hrvWindowCandidates(points, HRV_REST_ESTIMATE_OPTIONS);
     }
     if (!candidates.length) continue;
 
     const selected = selectHrvCandidates(candidates, 8);
-    if (selected.length < 2) continue;
-    const rawValue = median(selected.map((candidate) => candidate.value));
+    if (selected.length < 3) continue;
+    const rawValue = weightedMedianCandidates(selected) ?? median(selected.map((candidate) => candidate.value));
     const value = Math.max(1, Math.min(300, Math.round(rawValue)));
     const pairCount = selected.reduce((sum, candidate) => sum + candidate.pairCount, 0);
-    if (pairCount < 40) continue;
+    if (pairCount < 75) continue;
 
     const medianGap = median(selected.map((candidate) => candidate.medianGap)) || 0;
     const rejectedPairCount = selected.reduce((sum, candidate) => sum + candidate.rejectedPairCount, 0);
     const coverageRatio = median(selected.map((candidate) => candidate.coverageRatio)) || 0;
+    const windowValues = selected.map((candidate) => candidate.value);
+    const windowSpreadMs = (percentile(windowValues, 0.75) || 0) - (percentile(windowValues, 0.25) || 0);
     const latestWindowEnd = selected
       .map((candidate) => candidate.endTime)
       .filter(Boolean)
       .sort()
       .at(-1);
     const last = points.find((point) => point.measuredAt === latestWindowEnd) || points[points.length - 1];
-    const confidence = basis === "sleep_heart_rate_samples" && medianGap <= 1.25 && pairCount >= 120 && selected.length >= 4 && coverageRatio >= 0.9
+    const confidence = basis === "sleep_heart_rate_samples" && medianGap <= 1.1 && pairCount >= 150 && selected.length >= 4 && coverageRatio >= 0.94 && windowSpreadMs <= 8
       ? "highest_available_without_beat_intervals"
-      : medianGap <= 2 && pairCount >= 60 && coverageRatio >= 0.85
+      : medianGap <= 1.5 && pairCount >= 100 && coverageRatio >= 0.9 && windowSpreadMs <= 12
         ? "strong_proxy"
         : "limited_proxy";
     const qualityPrefix = basis === "sleep_heart_rate_samples" ? "sleep" : "resting";
-    const quality = medianGap <= 1.25 && selected.length >= 3 && coverageRatio >= 0.9
+    const quality = medianGap <= 1.25 && selected.length >= 3 && coverageRatio >= 0.9 && windowSpreadMs <= 12
       ? `${qualityPrefix}_dense_hr_estimate`
       : `${qualityPrefix}_sampled_hr_estimate`;
     const metric = {
@@ -1343,6 +1401,7 @@ function calculatedHrvTrend(metrics, limit = 90) {
       rejectedPairCount,
       medianGapMinutes: Number(medianGap.toFixed(1)),
       coverageRatio: Number(coverageRatio.toFixed(2)),
+      windowSpreadMs: Number(windowSpreadMs.toFixed(1)),
       restWindowCount: selected.length,
       windowMinutes: Math.round(median(selected.map((candidate) => candidate.durationMinutes)) || 0)
     };
