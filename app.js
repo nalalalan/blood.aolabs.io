@@ -689,17 +689,15 @@ function healthReadText(data) {
   const patterns = data?.patterns || {};
   const prediction = patterns.prediction || null;
   const condition = data?.health?.anxiety?.condition || {};
-  const conditionText = condition.summary || "Blood is waiting for enough current glucose, HR, HRV trend, sleep, and step data to make a useful read.";
-  const watchText = patterns.simpleDetail || prediction?.simpleDetail || "";
-  const parts = [plainSentence(conditionText)];
-  if (watchText) parts.push(plainSentence(watchText));
-  return parts.join(" ");
+  const conditionText = condition.summary || patterns.simpleDetail || prediction?.simpleDetail || "Blood is waiting for enough current glucose, HR, HRV trend, sleep, and step data to make a useful read.";
+  return plainSentence(conditionText);
 }
 
 const HEALTH_HIGHLIGHT_RULES = [
   {
     className: "is-watch",
     patterns: [
+      /Biggest watchout:[^.]+/gi,
       /Main concern:[^.]+/gi,
       /least steady window/gi,
       /a little elevated/gi,
@@ -721,6 +719,8 @@ const HEALTH_HIGHLIGHT_RULES = [
   {
     className: "is-good",
     patterns: [
+      /Good sign:[^.]+/gi,
+      /Best move:[^.]+/gi,
       /mostly steady/gi,
       /\bsteady\b/gi,
       /in range/gi,

@@ -26,6 +26,9 @@ test("top health strip renders one readable health text block", () => {
   assert.match(app, /health-token/);
   assert.match(app, /is-good/);
   assert.match(app, /is-watch/);
+  assert.match(app, /Good sign/);
+  assert.match(app, /Biggest watchout/);
+  assert.match(app, /Best move/);
   assert.doesNotMatch(app, /for this Blood estimate/);
   assert.match(css, /font-weight:\s*500/);
   assert.match(css, /health-token\.is-good/);
@@ -308,8 +311,9 @@ test("anxiety condition uses overall source state and one positive action", () =
   assert.equal(anxiety.suggestion.reason, "104 bpm HR is too high.");
   assert.equal(anxiety.suggestion.action, "Water more; protein/fiber snack more; easy walk more.");
   assert.equal(anxiety.condition.label, "Overall condition");
-  assert.match(anxiety.condition.summary, /You look|main concern|high HR/i);
-  assert.match(anxiety.condition.watch, /watchful read|source pattern/i);
+  assert.match(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:/i);
+  assert.match(anxiety.condition.summary, /104 bpm HR is too high|drink water, eat a protein\/fiber snack, and take an easy walk/i);
+  assert.equal(anxiety.condition.watch, "");
   assert.doesNotMatch(`${anxiety.condition.summary} ${anxiety.condition.watch}`, /Easy moves|Closest lever|Blood will change this/i);
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
   assert.doesNotMatch(`${anxiety.suggestion.label} ${anxiety.suggestion.reason} ${anxiety.suggestion.action}`, /\bnow\b|outlier|\bless\b|avoid|restrict|reduce|stop/i);
@@ -346,7 +350,7 @@ test("early-day low steps do not become the main condition watchout", () => {
 
   assert.ok(anxiety.score < 4.4);
   assert.doesNotMatch(text, /movement is light|steps today is too low|steps today is low/i);
-  assert.match(anxiety.condition.summary, /77 steps are logged so far today/);
+  assert.match(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:/i);
 });
 
 test("stale sleep does not drive the current anxiety action", () => {

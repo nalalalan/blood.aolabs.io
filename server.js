@@ -2202,6 +2202,85 @@ function stepsConditionText(recentSteps) {
   return `${label} steps today is moderate.`;
 }
 
+function naturalActionText(action = "") {
+  const normalized = String(action || "").replace(/\s+/g, " ").trim();
+  const cleaned = normalized.replace(/\.$/, "");
+  const known = new Map([
+    ["Water more; protein/fiber snack more; easy walk more", "drink water, eat a protein/fiber snack, and take an easy walk"],
+    ["Protein/fiber with carbs more; water more; easy walk more", "eat protein/fiber with carbs, drink water, and take an easy walk"],
+    ["Carb plus protein snack more; water more", "have a carb plus protein snack and drink water"],
+    ["Water plus normal food more; easy walk more", "drink water, eat normal food, and take an easy walk"],
+    ["Water more; normal meals more; easy walk more", "drink water, eat a normal meal, and take an easy walk"],
+    ["Water after movement more; steady movement more", "drink water and keep steady movement going"],
+    ["Water more; protein/fiber meal rhythm more; gentle walk more", "drink water, eat a protein/fiber meal, and take a gentle walk"],
+    ["Normal exercise more; water more", "keep normal exercise going and drink water"]
+  ]);
+  if (known.has(cleaned)) return `${known.get(cleaned)}.`;
+  const pieces = cleaned
+    .split(";")
+    .map((piece) => piece.trim())
+    .filter(Boolean)
+    .map((piece) => piece
+      .replace(/\bmore\b/gi, "")
+      .replace(/^water plus normal food$/i, "drink water and eat normal food")
+      .replace(/^water$/i, "drink water")
+      .replace(/^protein\/fiber snack$/i, "eat a protein/fiber snack")
+      .replace(/^protein\/fiber with carbs$/i, "eat protein/fiber with carbs")
+      .replace(/^carb plus protein snack$/i, "have a carb plus protein snack")
+      .replace(/^easy walk$/i, "take an easy walk")
+      .replace(/^gentle walk$/i, "take a gentle walk")
+      .replace(/^normal meals$/i, "eat normal meals")
+      .trim());
+  const text = proseList(pieces, 4) || "drink water, eat normal food, and take an easy walk";
+  return `${text.replace(/\.$/, "")}.`;
+}
+
+function bestReassuringSignal(stable = []) {
+  const glucose = stable.find((item) => /^glucose is in range/i.test(item));
+  const heartRate = stable.find((item) => /^HR is calm/i.test(item));
+  const estimatedHrv = stable.find((item) => /^estimated HRV looks normal/i.test(item));
+  if (glucose && heartRate && estimatedHrv) return `${glucose}, ${heartRate}, and ${estimatedHrv}`;
+  if (glucose && heartRate) return `${glucose} and ${heartRate}`;
+  return stable.find((item) => !/steps are logged so far today/i.test(item))
+    || stable[0]
+    || "the current data has enough signal to read";
+}
+
+function naturalizeWatchReason(reason = "") {
+  return String(reason || "")
+    .replace(/\.$/, "")
+    .replace(/^HR running high/i, "HR tends to run high")
+    .replace(/^glucose rising/i, "glucose tends to rise")
+    .replace(/^glucose dipping/i, "glucose tends to dip")
+    .replace(/^HRV dipping/i, "HRV tends to dip")
+    .replace(/^light movement/i, "movement can run light");
+}
+
+function naturalPatternWatchout(pattern = null) {
+  if (!pattern?.strongestReason || !pattern?.label) return "";
+  const label = String(pattern.label || "").toLowerCase();
+  const reason = naturalizeWatchReason(patternPlainReason(pattern.strongestReason));
+  if (!reason) return "";
+  const window = label ? `${label} has been the least steady window` : "the least steady window is the main pattern";
+  return `${window}; ${reason} there`;
+}
+
+function naturalMetricWatchout(metricState, actionSource = null) {
+  const firstWatch = metricState.watch?.[0];
+  if (firstWatch) return firstWatch.replace(/\.$/, "");
+  const reason = String(actionSource?.reason || "").replace(/\.$/, "");
+  if (reason && !/^No current/i.test(reason)) return reason;
+  return "no major spike is jumping out right now";
+}
+
+function buildTopHealthRead({ bestSign, watchout, action } = {}) {
+  return [
+    `Good sign: ${bestSign || "the current data is readable"}.`,
+    `Biggest watchout: ${watchout || "no major spike is jumping out right now"}.`,
+    `Best move: ${naturalActionText(action)}`
+  ].join(" ");
+}
+
 function referenceEasternHour(referenceAt = null, hour = null) {
   if (Number.isFinite(Number(hour))) return Number(hour);
   const date = referenceAt ? new Date(referenceAt) : new Date();
@@ -2265,28 +2344,61 @@ function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, re
     .filter((factor) => !(factor.key === "hrv" && /estimated HRV (is )?(too )?low/i.test(factor.reason || "")))
     .sort((a, b) => Number(b.points) - Number(a.points));
   const actionSource = positiveFactors[0] || dynamics[0] || null;
-  const stableRead = proseList(metricState.stable, 4);
-  const concernRead = proseList(metricState.watch, 2);
-  const coreRead = concernRead
-    ? `The main concern in this read is ${concernRead}.`
-    : stableRead
-      ? `${ucfirst(stableRead)}.`
-      : "I do not see enough current source data yet to make a confident read.";
-  const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("estimated HRV looks normal")
-    ? " Estimated HRV looks normal; I would only treat it as a concern if it drops against your recent trend."
-    : "";
-  const earlyStepsContext = metricState.stable.some((item) => /steps are logged so far today/.test(item));
-  const assessment = concernRead
-    ? "This is a watchful read, but it is still just the current source pattern."
-    : earlyStepsContext
-      ? "This is reassuring overall. The step count is just early-day context, not a problem signal yet."
-      : "This is reassuring overall.";
+  const bestSign = bestReassuringSignal(metricState.stable);
+  const watchout = naturalMetricWatchout(metricState, actionSource);
+  const action = actionSource?.action || "Water plus normal food more; easy walk more.";
   return {
     label: "Overall condition",
     headline,
-    summary: `${headline} ${coreRead}${hrvNote}`.trim(),
-    watch: `${assessment} Personal source read, not a diagnosis.`,
+    summary: buildTopHealthRead({ bestSign, watchout, action }),
+    watch: "",
+    bestSign,
+    watchout,
+    action: naturalActionText(action),
     source: actionSource?.key || actionSource?.source || "none"
+  };
+}
+
+function applyPatternHealthRead({ health = {}, patterns = null, now = new Date() } = {}) {
+  const latest = health?.latest || {};
+  const anxiety = health?.anxiety || {};
+  const referenceAt = latestSourceEndpoint(
+    now,
+    latest.glucose?.capturedAt,
+    latest.glucose?.measuredAt,
+    latest.heartRate?.capturedAt,
+    latest.heartRate?.measuredAt,
+    latest.hrv?.capturedAt,
+    latest.hrv?.measuredAt,
+    latest.steps?.capturedAt,
+    latest.steps?.measuredAt,
+    health?.lastCapturedAt
+  );
+  const metricState = metricStateSummary({
+    glucose: latest.glucose,
+    heartRate: latest.heartRate,
+    hrv: latest.hrv,
+    recentSteps: latest.steps?.value,
+    referenceAt
+  });
+  const bestSign = bestReassuringSignal(metricState.stable);
+  const patternWatchout = naturalPatternWatchout(patterns?.prediction);
+  const watchout = patternWatchout || anxiety.condition?.watchout || naturalMetricWatchout(metricState, anxiety.suggestion);
+  const action = patternWatchout && patterns?.prediction?.actionText
+    ? patterns.prediction.actionText
+    : anxiety.suggestion?.action || anxiety.condition?.action || "Water plus normal food more; easy walk more.";
+  return {
+    ...health,
+    anxiety: {
+      ...anxiety,
+      condition: {
+        ...(anxiety.condition || {}),
+        summary: buildTopHealthRead({ bestSign, watchout, action }),
+        bestSign,
+        watchout,
+        action: naturalActionText(action)
+      }
+    }
   };
 }
 
@@ -2699,6 +2811,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
     }
   };
   const patterns = estimateInstabilityPatterns({ readings: normalized, health: healthWithAnxietyTrend });
+  const healthWithTopRead = applyPatternHealthRead({ health: healthWithAnxietyTrend, patterns });
 
   if (!normalized.length) {
     return {
@@ -2711,7 +2824,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       readings: [],
       trend: [],
       days: [],
-      health: healthWithAnxietyTrend,
+      health: healthWithTopRead,
       patterns,
       publicMinReadingDate: PUBLIC_MIN_READING_DATE,
       message: "No readings have reached Blood. Waiting for automatic CONTOUR NEXT ONE Bluetooth glucose upload; Health Connect supplies HR, sleep, and steps, and Blood estimates HRV from sleep/rest heart-rate samples."
@@ -2738,7 +2851,7 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
       maxMgDl: Math.max(...values),
       avgMgDl: average(values)
     },
-    health: healthWithAnxietyTrend,
+    health: healthWithTopRead,
     patterns,
     readings: normalized.slice(0, 30),
     trend: trendDesc.reverse(),
