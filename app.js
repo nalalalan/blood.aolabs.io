@@ -721,88 +721,9 @@ function healthReadText(data) {
   return plainSentence(normalizeLegacyRoleHealthRead(conditionText));
 }
 
-const HEALTH_HIGHLIGHT_RULES = [
-  {
-    className: "is-watch",
-    patterns: [
-      /least steady window/gi,
-      /a little elevated/gi,
-      /\belevated\b/gi,
-      /\brunning high\b/gi,
-      /near the high edge/gi,
-      /near the low edge/gi,
-      /\braised\b/gi,
-      /\bhigh\b/gi,
-      /\blow\b/gi,
-      /\bwatch(?:ful)?\b/gi,
-      /\blight\b/gi,
-      /\brising\b/gi,
-      /\bdropping\b/gi,
-      /\bdip(?:ping)?\b/gi,
-      /\bspike\b/gi
-    ]
-  },
-  {
-    className: "is-good",
-    patterns: [
-      /mostly steady/gi,
-      /\bsteady\b/gi,
-      /in range/gi,
-      /\bcalm\b/gi,
-      /\bacceptable\b/gi,
-      /\bnormal\b/gi,
-      /\bmoderate\b/gi,
-      /\bsolid\b/gi,
-      /\breassuring\b/gi
-    ]
-  }
-];
-
-function firstSentenceBoundary(text) {
-  const match = String(text || "").match(/[.!?](?:\s|$)/);
-  return match ? match.index + 1 : 0;
-}
-
-function collectHealthHighlights(text) {
-  const ranges = [];
-  const neutralEnd = firstSentenceBoundary(text);
-  for (const group of HEALTH_HIGHLIGHT_RULES) {
-    for (const pattern of group.patterns) {
-      pattern.lastIndex = 0;
-      let match = pattern.exec(text);
-      while (match) {
-        const start = match.index;
-        const end = start + match[0].length;
-        const overlaps = ranges.some((range) => start < range.end && end > range.start);
-        const inNeutralRecommendation = neutralEnd > 0 && start < neutralEnd;
-        if (!overlaps) {
-          if (!inNeutralRecommendation) ranges.push({ start, end, className: group.className });
-        }
-        match = pattern.exec(text);
-      }
-    }
-  }
-  return ranges.sort((a, b) => a.start - b.start || b.end - a.end);
-}
-
 function renderHealthReadText(element, text) {
   if (!element) return;
-  element.textContent = "";
-  const ranges = collectHealthHighlights(text);
-  let cursor = 0;
-  for (const range of ranges) {
-    if (range.start > cursor) {
-      element.append(document.createTextNode(text.slice(cursor, range.start)));
-    }
-    const token = document.createElement("span");
-    token.className = `health-token ${range.className}`;
-    token.textContent = text.slice(range.start, range.end);
-    element.append(token);
-    cursor = range.end;
-  }
-  if (cursor < text.length) {
-    element.append(document.createTextNode(text.slice(cursor)));
-  }
+  element.textContent = text || "";
 }
 
 function renderHealth(data) {

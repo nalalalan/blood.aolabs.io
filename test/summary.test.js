@@ -23,16 +23,12 @@ test("top health strip renders one readable health text block", () => {
   assert.match(html, /id="health-read"/);
   assert.doesNotMatch(html, /suggestion-reason|pattern-basis|pattern-detail|suggestion-time|suggestion-action|anxiety-label/);
   assert.doesNotMatch(app, /condition\.watch|patternBasis|patternDetail|suggestionReason|anxietyLabel/);
-  assert.match(app, /health-token/);
-  assert.match(app, /is-good/);
-  assert.match(app, /is-watch/);
-  assert.match(app, /firstSentenceBoundary/);
+  assert.doesNotMatch(app, /health-token|is-good|is-watch|firstSentenceBoundary|HEALTH_HIGHLIGHT_RULES/);
   assert.match(app, /normalizeLegacyRoleHealthRead/);
   assert.doesNotMatch(app, /Good sign|Biggest watchout|Best move|Main concern/);
   assert.doesNotMatch(app, /for this Blood estimate/);
   assert.match(css, /font-weight:\s*500/);
-  assert.match(css, /health-token\.is-good/);
-  assert.match(css, /health-token\.is-watch/);
+  assert.doesNotMatch(css, /health-token|is-good|is-watch/);
   assert.doesNotMatch(css, /pattern-card|health-suggestion small|anxiety-readout p/);
 });
 

@@ -442,19 +442,6 @@ h2 {
   word-break: normal;
 }
 
-.health-token {
-  display: inline;
-  font-weight: inherit;
-}
-
-.health-token.is-good {
-  color: #2f7d55;
-}
-
-.health-token.is-watch {
-  color: #b43b47;
-}
-
 .range-controls {
   display: flex;
   flex-wrap: wrap;
