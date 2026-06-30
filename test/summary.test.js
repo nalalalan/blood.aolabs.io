@@ -23,6 +23,13 @@ test("top health strip renders one readable health text block", () => {
   assert.match(html, /id="health-read"/);
   assert.doesNotMatch(html, /suggestion-reason|pattern-basis|pattern-detail|suggestion-time|suggestion-action|anxiety-label/);
   assert.doesNotMatch(app, /condition\.watch|patternBasis|patternDetail|suggestionReason|anxietyLabel/);
+  assert.match(app, /health-token/);
+  assert.match(app, /is-good/);
+  assert.match(app, /is-watch/);
+  assert.doesNotMatch(app, /for this Blood estimate/);
+  assert.match(css, /font-weight:\s*500/);
+  assert.match(css, /health-token\.is-good/);
+  assert.match(css, /health-token\.is-watch/);
   assert.doesNotMatch(css, /pattern-card|health-suggestion small|anxiety-readout p/);
 });
 
@@ -190,7 +197,8 @@ test("calculates estimated HRV from enough clean sleep heart-rate samples", () =
   assert.ok(health.latest.hrv.restWindowCount >= 4);
   assert.equal(health.trends.hrv.length, 1);
   assert.equal(health.anxiety.factors.some((factor) => factor.key === "hrv"), false);
-  assert.match(health.anxiety.condition.summary, /estimated HRV looks normal for this Blood estimate/i);
+  assert.match(health.anxiety.condition.summary, /estimated HRV looks normal/i);
+  assert.doesNotMatch(health.anxiety.condition.summary, /for this Blood estimate/i);
 });
 
 test("estimated HRV ignores sparse sleep boundary samples", () => {
@@ -319,7 +327,8 @@ test("estimated HRV alone reads normal for the estimate instead of too low", () 
 
   assert.equal(anxiety.suggestion.label, "Overall condition");
   assert.notEqual(anxiety.suggestion.source, "hrv");
-  assert.match(anxiety.condition.summary, /estimated HRV looks normal for this Blood estimate/i);
+  assert.match(anxiety.condition.summary, /estimated HRV looks normal/i);
+  assert.doesNotMatch(anxiety.condition.summary, /for this Blood estimate/i);
   assert.doesNotMatch(`${anxiety.suggestion.reason} ${anxiety.condition.summary} ${anxiety.condition.watch}`, /estimated HRV is too low|estimated HRV too low/i);
   assert.doesNotMatch(anxiety.condition.watch, /food and water first|task switching|quiet reset|phone|screen|breath|exhale|focus|work|commitment|open task|\bless\b|avoid|restrict|reduce|stop/i);
   assert.doesNotMatch(`${anxiety.condition.summary} ${anxiety.condition.watch}`, /Easy moves|Closest lever|Blood will change this/i);

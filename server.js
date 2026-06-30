@@ -2186,7 +2186,7 @@ function hrvConditionText(hrv, dynamics = []) {
   if (!hrv?.value) return "";
   const hrvMove = dynamics.find((factor) => factor?.source === "hrv");
   if (hrvMove?.reason) return `${hrvMove.reason.replace(/\.$/, "")}; watch recovery trend.`;
-  if (isEstimatedHrvMetric(hrv)) return "Estimated HRV looks normal for this Blood estimate.";
+  if (isEstimatedHrvMetric(hrv)) return "Estimated HRV looks normal.";
   const value = Number(hrv.value);
   if (value < 40) return `${Math.round(value)} ms HRV is low.`;
   if (value >= 65) return `${Math.round(value)} ms HRV is strong.`;
@@ -2238,7 +2238,7 @@ function metricStateSummary({ glucose, heartRate, hrv, recentSteps, referenceAt 
 
   if (Number.isFinite(hrvValue)) {
     if (isEstimatedHrvMetric(hrv)) {
-      stable.push("estimated HRV looks normal for this Blood estimate");
+      stable.push("estimated HRV looks normal");
     } else if (hrvValue < 40) {
       watch.push(`low HRV at ${Math.round(hrvValue)} ms`);
     } else {
@@ -2272,8 +2272,8 @@ function buildConditionSummary({ score, glucose, heartRate, hrv, recentSteps, re
     : stableRead
       ? `${ucfirst(stableRead)}.`
       : "I do not see enough current source data yet to make a confident read.";
-  const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("estimated HRV looks normal for this Blood estimate")
-    ? " Estimated HRV looks normal for this Blood estimate; I would only treat it as a concern if it drops against your recent trend."
+  const hrvNote = isEstimatedHrvMetric(hrv) && !coreRead.includes("estimated HRV looks normal")
+    ? " Estimated HRV looks normal; I would only treat it as a concern if it drops against your recent trend."
     : "";
   const earlyStepsContext = metricState.stable.some((item) => /steps are logged so far today/.test(item));
   const assessment = concernRead

@@ -431,15 +431,28 @@ h2 {
   border-left: 1px solid rgba(73, 55, 51, .12);
 }
 
-.health-suggestion span {
+.health-suggestion #health-read {
   display: block;
   min-width: 0;
   color: var(--ink);
   font-size: clamp(18px, 1.5vw, 22px);
   line-height: 1.34;
-  font-weight: 760;
+  font-weight: 500;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.health-token {
+  display: inline;
+  font-weight: inherit;
+}
+
+.health-token.is-good {
+  color: #2f7d55;
+}
+
+.health-token.is-watch {
+  color: #b43b47;
 }
 
 .range-controls {
