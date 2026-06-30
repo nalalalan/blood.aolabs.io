@@ -2060,7 +2060,7 @@ function buildPatternPlainDetail(pattern, fallback = "") {
     const prefix = pattern.level === "high" || pattern.unstableCount >= 2
       ? `${window} has been the least steady window.`
       : `${window} has a possible pattern.`;
-    return `${prefix} Main concern: ${reason}. If it shows up again, ${action}`;
+    return `${prefix} ${capitalizeSentence(reason)}. If it shows up again, ${action}`;
   }
   return `${window} has the strongest pattern so far. If it shows up again, ${action}`;
 }
@@ -2235,6 +2235,12 @@ function naturalActionText(action = "") {
   return `${text.replace(/\.$/, "")}.`;
 }
 
+function capitalizeSentence(text = "") {
+  const cleaned = String(text || "").trim();
+  if (!cleaned) return "";
+  return `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
+}
+
 function bestReassuringSignal(stable = []) {
   const glucose = stable.find((item) => /^glucose is in range/i.test(item));
   const heartRate = stable.find((item) => /^HR is calm/i.test(item));
@@ -2273,11 +2279,36 @@ function naturalMetricWatchout(metricState, actionSource = null) {
   return "no major spike is jumping out right now";
 }
 
+function naturalReasonClause(watchout = "") {
+  const cleaned = String(watchout || "").replace(/\.$/, "").trim();
+  if (!cleaned || /no major spike is jumping out right now/i.test(cleaned)) {
+    return "nothing major is jumping out right now";
+  }
+  return cleaned
+    .replace(/^high HR at/i, "HR is high at")
+    .replace(/^raised HR at/i, "HR is raised at")
+    .replace(/^low HRV at/i, "HRV is low at")
+    .replace(/^high glucose at/i, "glucose is high at")
+    .replace(/^low glucose at/i, "glucose is low at")
+    .replace(/^light movement at/i, "movement is light at");
+}
+
+function recommendationReasonText(watchout = "") {
+  const reason = naturalReasonClause(watchout);
+  if (/nothing major is jumping out right now/i.test(reason)) {
+    return "That helps because it keeps food, fluid, and easy movement steady while the current data stays calm.";
+  }
+  return `That helps because ${reason}, and food, fluid, and easy movement give your body a steadier input.`;
+}
+
 function buildTopHealthRead({ bestSign, watchout, action } = {}) {
+  const actionSentence = capitalizeSentence(naturalActionText(action));
+  const reasonSentence = recommendationReasonText(watchout);
+  const goodSentence = capitalizeSentence(`${String(bestSign || "the current data is readable").replace(/\.$/, "")}.`);
   return [
-    `Good sign: ${bestSign || "the current data is readable"}.`,
-    `Biggest watchout: ${watchout || "no major spike is jumping out right now"}.`,
-    `Best move: ${naturalActionText(action)}`
+    actionSentence,
+    reasonSentence,
+    goodSentence
   ].join(" ");
 }
 

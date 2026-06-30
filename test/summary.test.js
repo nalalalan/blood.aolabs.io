@@ -26,9 +26,8 @@ test("top health strip renders one readable health text block", () => {
   assert.match(app, /health-token/);
   assert.match(app, /is-good/);
   assert.match(app, /is-watch/);
-  assert.match(app, /Good sign/);
-  assert.match(app, /Biggest watchout/);
-  assert.match(app, /Best move/);
+  assert.match(app, /firstSentenceBoundary/);
+  assert.doesNotMatch(app, /Good sign|Biggest watchout|Best move|Main concern/);
   assert.doesNotMatch(app, /for this Blood estimate/);
   assert.match(css, /font-weight:\s*500/);
   assert.match(css, /health-token\.is-good/);
@@ -311,8 +310,9 @@ test("anxiety condition uses overall source state and one positive action", () =
   assert.equal(anxiety.suggestion.reason, "104 bpm HR is too high.");
   assert.equal(anxiety.suggestion.action, "Water more; protein/fiber snack more; easy walk more.");
   assert.equal(anxiety.condition.label, "Overall condition");
-  assert.match(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:/i);
-  assert.match(anxiety.condition.summary, /104 bpm HR is too high|drink water, eat a protein\/fiber snack, and take an easy walk/i);
+  assert.match(anxiety.condition.summary, /^Drink water, eat a protein\/fiber snack, and take an easy walk\./);
+  assert.match(anxiety.condition.summary, /That helps because HR is high at 104 bpm, and food, fluid, and easy movement give your body a steadier input\./i);
+  assert.doesNotMatch(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:|Main concern:/i);
   assert.equal(anxiety.condition.watch, "");
   assert.doesNotMatch(`${anxiety.condition.summary} ${anxiety.condition.watch}`, /Easy moves|Closest lever|Blood will change this/i);
   assert.doesNotMatch(anxiety.suggestion.action, /until|before|after|next stable time|checkpoint/i);
@@ -350,7 +350,9 @@ test("early-day low steps do not become the main condition watchout", () => {
 
   assert.ok(anxiety.score < 4.4);
   assert.doesNotMatch(text, /movement is light|steps today is too low|steps today is low/i);
-  assert.match(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:/i);
+  assert.match(anxiety.condition.summary, /^Drink water|^Eat|^Have|^Keep/i);
+  assert.match(anxiety.condition.summary, /That helps because/i);
+  assert.doesNotMatch(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:|Main concern:/i);
 });
 
 test("stale sleep does not drive the current anxiety action", () => {

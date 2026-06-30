@@ -697,8 +697,6 @@ const HEALTH_HIGHLIGHT_RULES = [
   {
     className: "is-watch",
     patterns: [
-      /Biggest watchout:[^.]+/gi,
-      /Main concern:[^.]+/gi,
       /least steady window/gi,
       /a little elevated/gi,
       /\belevated\b/gi,
@@ -719,8 +717,6 @@ const HEALTH_HIGHLIGHT_RULES = [
   {
     className: "is-good",
     patterns: [
-      /Good sign:[^.]+/gi,
-      /Best move:[^.]+/gi,
       /mostly steady/gi,
       /\bsteady\b/gi,
       /in range/gi,
@@ -734,8 +730,14 @@ const HEALTH_HIGHLIGHT_RULES = [
   }
 ];
 
+function firstSentenceBoundary(text) {
+  const match = String(text || "").match(/[.!?](?:\s|$)/);
+  return match ? match.index + 1 : 0;
+}
+
 function collectHealthHighlights(text) {
   const ranges = [];
+  const neutralEnd = firstSentenceBoundary(text);
   for (const group of HEALTH_HIGHLIGHT_RULES) {
     for (const pattern of group.patterns) {
       pattern.lastIndex = 0;
@@ -744,8 +746,9 @@ function collectHealthHighlights(text) {
         const start = match.index;
         const end = start + match[0].length;
         const overlaps = ranges.some((range) => start < range.end && end > range.start);
+        const inNeutralRecommendation = neutralEnd > 0 && start < neutralEnd;
         if (!overlaps) {
-          ranges.push({ start, end, className: group.className });
+          if (!inNeutralRecommendation) ranges.push({ start, end, className: group.className });
         }
         match = pattern.exec(text);
       }
