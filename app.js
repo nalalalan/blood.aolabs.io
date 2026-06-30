@@ -685,12 +685,40 @@ function plainSentence(value) {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
+function capitalizedCopy(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+const LEGACY_ROLE_READ_PATTERN = new RegExp(
+  [
+    "Good ",
+    "sign:\\s*(.*?)\\.\\s*",
+    "Biggest ",
+    "watchout:\\s*(.*?)\\.\\s*",
+    "Best ",
+    "move:\\s*(.*)$"
+  ].join(""),
+  "i"
+);
+
+function normalizeLegacyRoleHealthRead(value) {
+  const text = String(value || "").trim();
+  const legacy = text.match(LEGACY_ROLE_READ_PATTERN);
+  if (!legacy) return text;
+  const good = capitalizedCopy(plainSentence(legacy[1]));
+  const watch = String(legacy[2] || "").replace(/\.$/, "").trim();
+  const action = capitalizedCopy(plainSentence(legacy[3]));
+  return `${action} That helps because ${watch}, and food, fluid, and easy movement give your body a steadier input. ${good}`;
+}
+
 function healthReadText(data) {
   const patterns = data?.patterns || {};
   const prediction = patterns.prediction || null;
   const condition = data?.health?.anxiety?.condition || {};
   const conditionText = condition.summary || patterns.simpleDetail || prediction?.simpleDetail || "Blood is waiting for enough current glucose, HR, HRV trend, sleep, and step data to make a useful read.";
-  return plainSentence(conditionText);
+  return plainSentence(normalizeLegacyRoleHealthRead(conditionText));
 }
 
 const HEALTH_HIGHLIGHT_RULES = [
