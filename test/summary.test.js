@@ -27,7 +27,7 @@ test("top health strip renders one readable health text block", () => {
   assert.match(app, /normalizeLegacyRoleHealthRead/);
   assert.doesNotMatch(app, /Good sign|Biggest watchout|Best move|Main concern/);
   assert.doesNotMatch(app, /for this Blood estimate/);
-  assert.match(css, /font-weight:\s*500/);
+  assert.match(css, /font-weight:\s*400/);
   assert.doesNotMatch(css, /health-token|is-good|is-watch/);
   assert.doesNotMatch(css, /pattern-card|health-suggestion small|anxiety-readout p/);
 });
