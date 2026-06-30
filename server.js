@@ -2296,9 +2296,9 @@ function naturalReasonClause(watchout = "") {
 function recommendationReasonText(watchout = "") {
   const reason = naturalReasonClause(watchout);
   if (/nothing major is jumping out right now/i.test(reason)) {
-    return "That helps because it keeps food, fluid, and easy movement steady while the current data stays calm.";
+    return "Food, fluid, and easy movement stay steady while the current data stays calm.";
   }
-  return `That helps because ${reason}, and food, fluid, and easy movement give your body a steadier input.`;
+  return `${capitalizeSentence(reason)}, and food, fluid, and easy movement give your body a steadier input.`;
 }
 
 function buildTopHealthRead({ bestSign, watchout, action } = {}) {

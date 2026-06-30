@@ -312,7 +312,8 @@ test("anxiety condition uses overall source state and one positive action", () =
   assert.equal(anxiety.suggestion.action, "Water more; protein/fiber snack more; easy walk more.");
   assert.equal(anxiety.condition.label, "Overall condition");
   assert.match(anxiety.condition.summary, /^Drink water, eat a protein\/fiber snack, and take an easy walk\./);
-  assert.match(anxiety.condition.summary, /That helps because HR is high at 104 bpm, and food, fluid, and easy movement give your body a steadier input\./i);
+  assert.match(anxiety.condition.summary, /HR is high at 104 bpm, and food, fluid, and easy movement give your body a steadier input\./i);
+  assert.doesNotMatch(anxiety.condition.summary, /That helps because/i);
   assert.doesNotMatch(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:|Main concern:/i);
   assert.equal(anxiety.condition.watch, "");
   assert.doesNotMatch(`${anxiety.condition.summary} ${anxiety.condition.watch}`, /Easy moves|Closest lever|Blood will change this/i);
@@ -352,7 +353,8 @@ test("early-day low steps do not become the main condition watchout", () => {
   assert.ok(anxiety.score < 4.4);
   assert.doesNotMatch(text, /movement is light|steps today is too low|steps today is low/i);
   assert.match(anxiety.condition.summary, /^Drink water|^Eat|^Have|^Keep/i);
-  assert.match(anxiety.condition.summary, /That helps because/i);
+  assert.match(anxiety.condition.summary, /food, fluid, and easy movement/i);
+  assert.doesNotMatch(anxiety.condition.summary, /That helps because/i);
   assert.doesNotMatch(anxiety.condition.summary, /Good sign:|Biggest watchout:|Best move:|Main concern:/i);
 });
 

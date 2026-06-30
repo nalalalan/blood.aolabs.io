@@ -710,7 +710,7 @@ function normalizeLegacyRoleHealthRead(value) {
   const good = capitalizedCopy(plainSentence(legacy[1]));
   const watch = String(legacy[2] || "").replace(/\.$/, "").trim();
   const action = capitalizedCopy(plainSentence(legacy[3]));
-  return `${action} That helps because ${watch}, and food, fluid, and easy movement give your body a steadier input. ${good}`;
+  return `${action} ${capitalizedCopy(watch)}, and food, fluid, and easy movement give your body a steadier input. ${good}`;
 }
 
 function healthReadText(data) {
