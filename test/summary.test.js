@@ -32,6 +32,35 @@ test("top health strip renders one readable health text block", () => {
   assert.doesNotMatch(css, /pattern-card|health-suggestion small|anxiety-readout p/);
 });
 
+test("bridge setup does not present manual upload as the normal path", () => {
+  const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const mainActivity = fs.readFileSync(
+    path.join(__dirname, "..", "connectors", "health-connect-bridge", "app", "src", "main", "java", "io", "aolabs", "bloodbridge", "MainActivity.kt"),
+    "utf8"
+  );
+  const worker = fs.readFileSync(
+    path.join(__dirname, "..", "connectors", "health-connect-bridge", "app", "src", "main", "java", "io", "aolabs", "bloodbridge", "BloodSyncWorker.kt"),
+    "utf8"
+  );
+  const bridge = fs.readFileSync(
+    path.join(__dirname, "..", "connectors", "health-connect-bridge", "app", "src", "main", "java", "io", "aolabs", "bloodbridge", "BloodBridgeSync.kt"),
+    "utf8"
+  );
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  for (const text of [readme, app, mainActivity]) {
+    assert.doesNotMatch(text, /tap Start automatic upload|Run one upload|Run automatic paths|Sync Health Connect metrics/i);
+    assert.doesNotMatch(text, /text\s*=\s*"Start automatic upload"/);
+  }
+  assert.match(mainActivity, /queueImmediateSync\(this\)/);
+  assert.match(worker, /AUTO_SYNC_LOOKBACK_DAYS/);
+  assert.match(worker, /queueRollingSync/);
+  assert.match(bridge, /bridgeCheckInEndpoint/);
+  assert.match(server, /markBridgeSyncRequested/);
+  assert.match(server, /\/api\/bridge\/check-in/);
+});
+
 test("normalizes mmol/L readings to mg/dL", () => {
   assert.equal(normalizeGlucoseMgDl({ value: "5.5", unit: "mmol/L" }), 99);
 });
@@ -198,6 +227,43 @@ test("calculates estimated HRV from enough clean sleep heart-rate samples", () =
   assert.equal(health.anxiety.factors.some((factor) => factor.key === "hrv"), false);
   assert.match(health.anxiety.condition.summary, /estimated HRV looks normal/i);
   assert.doesNotMatch(health.anxiety.condition.summary, /for this Blood estimate/i);
+});
+
+test("estimated HRV calibrates against overlapping source RMSSD days", () => {
+  const heartRate = [];
+  const sleepSessions = [];
+  const hrv = [];
+  for (const day of [25, 26, 27]) {
+    heartRate.push(...Array.from({ length: 180 }, (_, index) => ({
+      measuredAt: new Date(Date.UTC(2026, 5, day, 2, index, 0)).toISOString(),
+      valueBpm: index % 2 === 0 ? 60 : 62
+    })));
+    sleepSessions.push({
+      startTime: new Date(Date.UTC(2026, 5, day, 2, 0, 0)).toISOString(),
+      endTime: new Date(Date.UTC(2026, 5, day, 5, 15, 0)).toISOString()
+    });
+    if (day < 27) {
+      hrv.push({ measuredAt: new Date(Date.UTC(2026, 5, day, 7, 30, 0)).toISOString(), rmssdMs: 48 });
+    }
+  }
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-06-27T12:00:00.000Z",
+    heartRate,
+    sleepSessions,
+    hrv
+  });
+  const health = summarizeHealthMetrics(metrics, null, { measuredAt: "2026-06-27T11:55:00.000Z", valueMgDl: 111 });
+  const estimated = health.trends.hrv.find((point) => point.date === "2026-06-27");
+
+  assert.ok(estimated);
+  assert.equal(estimated.estimated, true);
+  assert.equal(estimated.uncalibratedValue, 32);
+  assert.equal(estimated.value, 48);
+  assert.equal(estimated.calibrationSampleCount, 2);
+  assert.equal(estimated.calibrationFactor, 1.5);
+  assert.equal(health.latest.hrv.value, 48);
+  assert.equal(health.latest.hrv.calibrationSampleCount, 2);
 });
 
 test("estimated HRV ignores sparse sleep boundary samples", () => {
@@ -590,4 +656,30 @@ test("anxiety trend reconstructs historical score points from glucose and health
   assert.ok(trend.every((point) => point.unit === "score_1_10"));
   assert.ok(trend.every((point) => point.value >= 1 && point.value <= 10));
   assert.ok(trend.some((point) => point.source === "heart_rate" || point.source === "hrv"));
+});
+
+test("anxiety trend keeps the full available range when it samples long history", () => {
+  const readings = sanitizePayload({
+    source: "test",
+    capturedAt: "2026-07-01T12:00:00.000Z",
+    readings: Array.from({ length: 480 }, (_, index) => ({
+      measuredAt: new Date(Date.UTC(2026, 0, 1 + index, 12, 0, 0)).toISOString(),
+      valueMgDl: index % 17 === 0 ? 146 : 104
+    }))
+  });
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-07-01T12:00:00.000Z",
+    heartRate: Array.from({ length: 480 }, (_, index) => ({
+      measuredAt: new Date(Date.UTC(2026, 0, 1 + index, 12, 5, 0)).toISOString(),
+      valueBpm: index % 19 === 0 ? 92 : 68
+    }))
+  });
+  const health = summarizeHealthMetrics(metrics, null, readings.at(-1));
+  const trend = estimateAnxietyTrend({ readings, health, limit: 25 });
+
+  assert.ok(trend.length <= 25);
+  assert.ok(trend.length >= 20);
+  assert.ok(new Date(trend[0].measuredAt).getTime() < Date.UTC(2026, 0, 10));
+  assert.ok(new Date(trend.at(-1).measuredAt).getTime() > Date.UTC(2027, 2, 1));
 });

@@ -45,6 +45,8 @@ class MainActivity : ComponentActivity() {
             } else if (syncAfterBluetoothPermission) {
                 syncAfterBluetoothPermission = false
                 syncBlood(days = 90)
+            } else {
+                ensureAutoSync("Bluetooth permission granted. Automatic upload is on.")
             }
         } else {
             syncAfterBluetoothPermission = false
@@ -65,12 +67,14 @@ class MainActivity : ComponentActivity() {
         loadSettings()
         checkAvailability()
         if (BloodBridgeSync.hasUploadToken(this)) {
+            BloodBridgeSync.setAlwaysOnEnabled(this, true)
             BloodBridgeSync.scheduleAutoSync(this)
+            BloodBridgeSync.queueImmediateSync(this)
             val lastStatus = BloodBridgeSync.prefs(this)
                 .getString(BloodBridgeSync.LAST_AUTO_SYNC_STATUS_KEY, "")
                 .orEmpty()
             setStatus(lastStatus.ifBlank {
-                "Invisible automatic upload is scheduled. Android runs it in the background."
+                "Automatic upload is on. Android runs it invisibly in the background."
             })
         } else {
             setStatus("This APK cannot upload. Download Blood Bridge again from blood.aolabs.io.")
@@ -122,36 +126,11 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "Start automatic upload"
-            setOnClickListener { startAlwaysOnUpload() }
-        })
-
-        root.addView(Button(this).apply {
-            text = "Stop automatic upload"
-            setOnClickListener { stopAlwaysOnUpload() }
-        })
-
-        root.addView(Button(this).apply {
-            text = "Run one upload check now"
-            setOnClickListener { syncBlood(days = 7) }
-        })
-
-        root.addView(Button(this).apply {
             text = "Grant Health Connect metrics permission"
             setOnClickListener {
                 saveSettings()
                 requestPermissions.launch(requestedPermissions)
             }
-        })
-
-        root.addView(Button(this).apply {
-            text = "Run automatic paths once"
-            setOnClickListener { syncBlood(days = 14) }
-        })
-
-        root.addView(Button(this).apply {
-            text = "Sync Health Connect metrics"
-            setOnClickListener { syncHealthConnectMetrics(days = 7) }
         })
 
         root.addView(Button(this).apply {
@@ -220,6 +199,7 @@ class MainActivity : ComponentActivity() {
             setStatus("This APK cannot upload. Download Blood Bridge again from blood.aolabs.io.")
             return false
         }
+        BloodBridgeSync.setAlwaysOnEnabled(this, true)
         BloodBridgeSync.scheduleAutoSync(this)
         if (queueImmediate) {
             BloodBridgeSync.queueImmediateSync(this)
@@ -246,7 +226,7 @@ class MainActivity : ComponentActivity() {
         BloodBridgeSync.setAlwaysOnEnabled(this, true)
         BloodBridgeSync.scheduleAutoSync(this)
         BloodBridgeSync.queueImmediateSync(this)
-        setStatus("Invisible automatic upload is scheduled. Android runs it in the background.")
+        setStatus("Automatic upload is on. Android runs it invisibly in the background.")
     }
 
     private fun stopAlwaysOnUpload() {

@@ -38,6 +38,7 @@ const LIVE_API_BASE = "https://blood.aolabs.io";
 const configuredApiBase = document.querySelector("meta[name='blood-api-base']")?.content || "";
 const API_BASE = (configuredApiBase || (location.hostname === "aolabs.io" ? LIVE_API_BASE : "")).replace(/\/$/, "");
 const POLL_MS = 30 * 1000;
+const ANDROID_BACKGROUND_WAIT_MS = 12 * 60 * 1000;
 const WRITE_TOKEN_STORAGE_KEY = "bloodWriteToken";
 const EDIT_KEY_STORAGE_KEY = "bloodEditKey";
 const DEFAULT_EDIT_KEY = "031120";
@@ -151,13 +152,26 @@ function minutesBetween(later, earlier) {
 function sourceFreshnessText(data) {
   const health = data?.health || {};
   const latest = health.latest || {};
+  const bridgeSync = data?.bridgeSync || {};
   const generatedAt = data?.generatedAt || new Date().toISOString();
   const uploadAt = health.lastCapturedAt || data?.lastCapturedAt || "";
   const heartRateAt = latest.heartRate?.measuredAt || "";
   const hrv = latest.hrv || null;
   const uploadAge = minutesBetween(generatedAt, uploadAt);
   const heartRateGap = minutesBetween(uploadAt, heartRateAt);
+  const requestTime = timeMs(bridgeSync.requestedAt);
+  const checkInTime = timeMs(bridgeSync.lastCheckInAt);
+  const generatedTime = timeMs(generatedAt);
   const parts = [];
+
+  if (requestTime && (!checkInTime || checkInTime < requestTime)) {
+    const waitingMs = generatedTime ? generatedTime - requestTime : 0;
+    parts.push(waitingMs > ANDROID_BACKGROUND_WAIT_MS
+      ? `Android background sync is pending from ${formatDateTime(bridgeSync.requestedAt)}.`
+      : "Blood requested a fresh bridge run.");
+  } else if (checkInTime) {
+    parts.push(`Bridge checked ${formatDateTime(bridgeSync.lastCheckInAt)}.`);
+  }
 
   if (!uploadAt) {
     parts.push("No health upload reached Blood yet.");
@@ -240,6 +254,9 @@ function hrvBasisLabel(metric) {
 function hrvDetailLabel(metric) {
   const parts = [hrvBasisLabel(metric)];
   if (metric?.confidence) parts.push(metric.confidence.replace(/_/g, " "));
+  if (Number.isFinite(Number(metric?.calibrationSampleCount)) && Number(metric.calibrationSampleCount) >= 2) {
+    parts.push(`${metric.calibrationSampleCount} RMSSD calibration days`);
+  }
   if (Number.isFinite(Number(metric?.restWindowCount))) parts.push(`${metric.restWindowCount} windows`);
   if (Number.isFinite(Number(metric?.pairCount))) parts.push(`${metric.pairCount} pairs`);
   if (Number.isFinite(Number(metric?.medianGapMinutes))) parts.push(`${metric.medianGapMinutes} min median gap`);
@@ -521,7 +538,7 @@ function renderAllCharts(data) {
   if (!allPoints.length) {
     renderBoundary(
       "No graph data reached Blood.",
-      "Install or update Blood Bridge, grant Bluetooth and Health Connect metrics, then tap Start automatic upload once."
+      "Install or update Blood Bridge, open it once, and grant Bluetooth plus Health Connect metrics. Android then runs the invisible uploader."
     );
     if (rangeSummary) rangeSummary.textContent = "No data";
     if (rangeDetail) rangeDetail.textContent = "Selected range.";
@@ -780,7 +797,11 @@ function renderData(data) {
   if (latestUnit) latestUnit.textContent = "mg/dL";
   latestTime.textContent = currentReadingsTime(data) ? formatDateTime(currentReadingsTime(data)) : "Current readings";
   latestSource.textContent = currentReadingsSourceText(data);
+  const bridgePrefix = data.bridgeSync?.lastCheckInAt
+    ? `Bridge checked ${formatDateTime(data.bridgeSync.lastCheckInAt)}.`
+    : "Blood requested fresh bridge sync.";
   syncLine.textContent = [
+    bridgePrefix,
     data.lastCapturedAt ? `Glucose upload ${formatDateTime(data.lastCapturedAt)}.` : "Glucose upload time missing.",
     data.health?.lastCapturedAt ? `Health upload ${formatDateTime(data.health.lastCapturedAt)}.` : "Health upload waiting."
   ].join(" ");

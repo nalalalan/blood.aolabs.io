@@ -17,14 +17,22 @@ class BloodSyncWorker(
             )
             return Result.success()
         }
+        if (!BloodBridgeSync.markAutoSyncStarted(applicationContext)) {
+            BloodBridgeSync.queueRollingSync(applicationContext)
+            return Result.success()
+        }
 
         return try {
-            val result = BloodBridgeSync.sync(applicationContext, days = 2)
+            val result = BloodBridgeSync.sync(applicationContext, days = BloodBridgeSync.AUTO_SYNC_LOOKBACK_DAYS)
             BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync ${Instant.now()}: ${result.accepted} record(s).")
+            BloodBridgeSync.postBridgeCheckIn(applicationContext, "synced", result.accepted, result.response)
+            BloodBridgeSync.queueRollingSync(applicationContext)
             Result.success()
         } catch (error: Exception) {
             val message = BloodBridgeSync.userFacingError(error)
             BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync failed ${Instant.now()}: $message")
+            BloodBridgeSync.postBridgeCheckIn(applicationContext, "blocked", 0, message)
+            BloodBridgeSync.queueRollingSync(applicationContext)
             if (message.contains("permission", ignoreCase = true) ||
                 message.contains("token", ignoreCase = true) ||
                 message.contains("unavailable", ignoreCase = true)

@@ -34,12 +34,11 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
 2. Open Blood Bridge.
 3. Tap `Grant Bluetooth permission`.
 4. Tap `Grant Health Connect metrics permission`.
-5. Tap `Start automatic upload`.
-6. Keep Android background sync allowed for Blood Bridge.
-7. Keep the CONTOUR NEXT ONE near the phone after a reading.
-8. Open `https://blood.aolabs.io/`.
+5. Keep Android background sync allowed for Blood Bridge.
+6. Keep the CONTOUR NEXT ONE near the phone after a reading.
+7. Open `https://blood.aolabs.io/`.
 
-Blood Bridge uses Android WorkManager background sync and queues an immediate background upload when automatic upload is started. It does not use a persistent foreground notification. Android may still delay invisible background work; when that happens, Blood shows the last upload time until the next worker run posts the stored meter and Health Connect records. The recurring worker reads the recent Health Connect window in pages so dense Samsung heart-rate records are not dropped behind an old first batch. The server keeps heart-rate history with a separate per-type limit instead of one shared health-row cap, so dense recent HR cannot crowd out older HR days. `Run one upload check now` is diagnostic only; it is not the normal workflow.
+Blood Bridge uses Android WorkManager background sync and queues an immediate background upload when the bridge opens, after permissions are granted, after boot, and after app update. It does not use a persistent foreground notification. Opening `blood.aolabs.io` records a fresh-sync request on the server; the bridge checks in and uploads the latest stored meter and Health Connect records when Android next allows invisible background work. Android may still delay invisible background work, so Blood shows bridge check-in time, source upload time, and source sample time instead of asking for manual bridge uploads. The recurring worker reads a recent Health Connect window in pages so dense Samsung heart-rate records are not dropped behind an old first batch. The server keeps heart-rate history with a separate per-type limit instead of one shared health-row cap, so dense recent HR cannot crowd out older HR days. One-off upload buttons are not the normal workflow.
 
 Health Connect metrics:
 
@@ -48,7 +47,7 @@ Health Connect metrics:
 3. Confirm the phone has sources for heart rate, steps, sleep, and HRV if a true RMSSD source is available.
 4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
 
-HR should stay current when the watch or phone writes current heart-rate samples into Health Connect and the bridge uploads them. Blood separates those two freshness states on the page: health upload time, and the latest Samsung/Health Connect HR sample time. If Samsung Health is visibly newer than Blood while Blood shows an older HR source time, the shared Health Connect copy is stale or delayed; Blood is not reading Samsung Health's private app store directly. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples, trims sleep-window edges, rejects noisy or sparse segments, requires at least three low-overlap clean windows and at least 75 accepted adjacent pairs, reports window spread, and waits if the sample set is too thin or too noisy. A truly live watch feed requires a separate Samsung SDK or watch-sensor bridge rather than the current Health Connect phone bridge.
+HR should stay current when the watch or phone writes current heart-rate samples into Health Connect and the bridge uploads them. Blood separates those two freshness states on the page: health upload time, and the latest Samsung/Health Connect HR sample time. If Samsung Health is visibly newer than Blood while Blood shows an older HR source time, the shared Health Connect copy is stale or delayed; Blood is not reading Samsung Health's private app store directly. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples, trims sleep-window edges, rejects noisy or sparse segments, requires at least three low-overlap clean windows and at least 75 accepted adjacent pairs, reports window spread, and waits if the sample set is too thin or too noisy. If true RMSSD and proxy HRV exist on overlapping source dates, Blood calibrates later estimated HRV against Alan's own true-HRV/proxy ratio. A truly live watch feed requires a separate Samsung SDK or watch-sensor bridge rather than the current Health Connect phone bridge.
 
 ## Local
 

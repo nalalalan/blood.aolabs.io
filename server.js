@@ -9,12 +9,14 @@ const PORT = Number.parseInt(process.env.PORT || "3057", 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = process.env.BLOOD_DATA_FILE || path.join(DATA_DIR, "glucose-readings.json");
 const HEALTH_FILE = process.env.BLOOD_HEALTH_DATA_FILE || path.join(DATA_DIR, "health-metrics.json");
+const BRIDGE_SYNC_FILE = process.env.BLOOD_BRIDGE_SYNC_FILE || path.join(DATA_DIR, "bridge-sync-state.json");
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const MAX_STORED_READINGS = Number.parseInt(process.env.BLOOD_MAX_READINGS || "5000", 10);
 const MAX_STORED_HEALTH_METRICS = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS || "12000", 10);
 const MAX_HEALTH_METRICS_PER_TYPE = Number.parseInt(process.env.BLOOD_MAX_HEALTH_METRICS_PER_TYPE || "30000", 10);
 const MAX_HEART_RATE_HISTORY_METRICS = Number.parseInt(process.env.BLOOD_MAX_HEART_RATE_HISTORY_METRICS || String(MAX_HEALTH_METRICS_PER_TYPE), 10);
 const MAX_HEART_RATE_TREND_POINTS = Number.parseInt(process.env.BLOOD_MAX_HEART_RATE_TREND_POINTS || "10000", 10);
+const MAX_ANXIETY_TREND_POINTS = Number.parseInt(process.env.BLOOD_MAX_ANXIETY_TREND_POINTS || "5000", 10);
 const HEART_RATE_TREND_BUCKET_MINUTES = Number.parseInt(process.env.BLOOD_HEART_RATE_BUCKET_MINUTES || "5", 10);
 const JSON_BODY_LIMIT = process.env.BLOOD_JSON_LIMIT || "8mb";
 const PUBLIC_MIN_READING_DATE = process.env.BLOOD_PUBLIC_MIN_DATE || "2026-01-01";
@@ -626,9 +628,109 @@ async function ensureDb() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS health_metrics_type_time_idx ON health_metrics (metric_type, measured_at DESC);
+      CREATE TABLE IF NOT EXISTS bridge_sync_state (
+        state_id TEXT PRIMARY KEY,
+        payload JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
     `);
   }
   await dbReadyPromise;
+}
+
+function bridgeSyncDefaultState() {
+  return {
+    requestedAt: null,
+    requestSource: null,
+    lastCheckInAt: null,
+    lastUploadAt: null,
+    lastAccepted: 0,
+    lastStatus: null,
+    lastMessage: null
+  };
+}
+
+function cleanBridgeSyncState(value = {}) {
+  const base = bridgeSyncDefaultState();
+  return {
+    ...base,
+    requestedAt: value.requestedAt || null,
+    requestSource: value.requestSource || null,
+    lastCheckInAt: value.lastCheckInAt || null,
+    lastUploadAt: value.lastUploadAt || null,
+    lastAccepted: Number.isFinite(Number(value.lastAccepted)) ? Number(value.lastAccepted) : 0,
+    lastStatus: value.lastStatus || null,
+    lastMessage: value.lastMessage ? String(value.lastMessage).slice(0, 240) : null
+  };
+}
+
+async function readJsonBridgeSyncState() {
+  try {
+    const raw = await fs.readFile(BRIDGE_SYNC_FILE, "utf8");
+    return cleanBridgeSyncState(JSON.parse(raw));
+  } catch (error) {
+    if (error.code === "ENOENT") return bridgeSyncDefaultState();
+    throw error;
+  }
+}
+
+async function writeJsonBridgeSyncState(state) {
+  await fs.mkdir(path.dirname(BRIDGE_SYNC_FILE), { recursive: true });
+  const tmp = `${BRIDGE_SYNC_FILE}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(cleanBridgeSyncState(state), null, 2));
+  await fs.rename(tmp, BRIDGE_SYNC_FILE);
+}
+
+async function readBridgeSyncState() {
+  const pool = await getPgPool();
+  if (pool) {
+    await ensureDb();
+    const result = await pool.query("SELECT payload FROM bridge_sync_state WHERE state_id = 'default'");
+    return cleanBridgeSyncState(result.rows[0]?.payload || {});
+  }
+  return readJsonBridgeSyncState();
+}
+
+async function writeBridgeSyncState(updates) {
+  const current = await readBridgeSyncState();
+  const next = cleanBridgeSyncState({ ...current, ...updates });
+  const pool = await getPgPool();
+  if (pool) {
+    await ensureDb();
+    await pool.query(`
+      INSERT INTO bridge_sync_state (state_id, payload, updated_at)
+      VALUES ('default', $1, now())
+      ON CONFLICT (state_id)
+      DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()
+    `, [next]);
+  } else {
+    await writeJsonBridgeSyncState(next);
+  }
+  return next;
+}
+
+async function markBridgeSyncRequested(source = "website_summary") {
+  return writeBridgeSyncState({
+    requestedAt: new Date().toISOString(),
+    requestSource: String(source || "website_summary").slice(0, 80)
+  });
+}
+
+async function recordBridgeCheckIn(payload = {}) {
+  const checkedAt = parseTime(payload.checkedAt || new Date().toISOString(), "checked_at");
+  const accepted = Number.isFinite(Number(payload.accepted)) ? Math.max(0, Number(payload.accepted)) : 0;
+  const updates = {
+    lastCheckInAt: checkedAt,
+    lastAccepted: accepted,
+    lastStatus: String(payload.status || "checked").slice(0, 80),
+    lastMessage: String(payload.message || "").replace(/\s+/g, " ").slice(0, 240)
+  };
+  if (accepted > 0 || payload.lastUploadAt) {
+    updates.lastUploadAt = payload.lastUploadAt
+      ? parseTime(payload.lastUploadAt, "last_upload_at")
+      : checkedAt;
+  }
+  return writeBridgeSyncState(updates);
 }
 
 async function readJsonReadings() {
@@ -1223,6 +1325,52 @@ function weightedMedianCandidates(candidates) {
   return sorted.at(-1)?.value ?? null;
 }
 
+function hrvCalibrationFactor(trueHrv = [], calculated = []) {
+  const calculatedByDate = new Map(
+    calculated
+      .filter((metric) => metric.date && Number.isFinite(Number(metric.value)) && Number(metric.value) > 0)
+      .map((metric) => [metric.date, metric])
+  );
+  const ratios = [];
+  for (const metric of trueHrv) {
+    const trueValue = Number(metric?.value);
+    const calculatedValue = Number(calculatedByDate.get(metric?.date)?.value);
+    if (!Number.isFinite(trueValue) || !Number.isFinite(calculatedValue) || calculatedValue <= 0) continue;
+    const ratio = trueValue / calculatedValue;
+    if (ratio >= 0.35 && ratio <= 2.5) ratios.push(ratio);
+  }
+  if (ratios.length < 2) {
+    return { factor: 1, sampleCount: ratios.length, calibrated: false };
+  }
+  const factor = Math.max(0.55, Math.min(1.8, median(ratios) || 1));
+  const spread = (percentile(ratios, 0.75) || factor) - (percentile(ratios, 0.25) || factor);
+  return {
+    factor: Number(factor.toFixed(3)),
+    sampleCount: ratios.length,
+    spread: Number(spread.toFixed(3)),
+    calibrated: true
+  };
+}
+
+function applyHrvCalibration(metric, calibration) {
+  if (!metric?.estimated || !calibration?.calibrated) return metric;
+  const raw = Number(metric.value);
+  const value = Math.max(1, Math.min(300, Math.round(raw * calibration.factor)));
+  return {
+    ...metric,
+    value,
+    uncalibratedValue: raw,
+    calibrationFactor: calibration.factor,
+    calibrationSampleCount: calibration.sampleCount,
+    calibrationSpread: calibration.spread,
+    confidence: calibration.sampleCount >= 4 && (calibration.spread ?? 1) <= 0.35
+      ? metric.confidence
+      : metric.confidence === "highest_available_without_beat_intervals"
+        ? "strong_proxy"
+        : metric.confidence
+  };
+}
+
 function metricTrend(metrics, type, limit = 900) {
   return metrics
     .filter((metric) => metric.type === type)
@@ -1249,6 +1397,10 @@ function metricTrend(metrics, type, limit = 900) {
       medianGapMinutes: metric.medianGapMinutes,
       coverageRatio: metric.coverageRatio,
       confidence: metric.confidence,
+      calibrationFactor: metric.calibrationFactor,
+      calibrationSampleCount: metric.calibrationSampleCount,
+      calibrationSpread: metric.calibrationSpread,
+      uncalibratedValue: metric.uncalibratedValue,
       restWindowCount: metric.restWindowCount,
       windowSpreadMs: metric.windowSpreadMs,
       windowMinutes: metric.windowMinutes
@@ -1349,7 +1501,7 @@ function calculatedHrvTrend(metrics, limit = 90) {
     }
     if (!candidates.length) continue;
 
-    const selected = selectHrvCandidates(candidates, 8);
+    const selected = selectHrvCandidates(candidates, 12);
     if (selected.length < 3) continue;
     const rawValue = weightedMedianCandidates(selected) ?? median(selected.map((candidate) => candidate.value));
     const value = Math.max(1, Math.min(300, Math.round(rawValue)));
@@ -1423,8 +1575,11 @@ function hrvTrend(metrics, limit = 900) {
       basis: metric.basis || "health_connect_rmssd"
     }));
   const trueDates = new Set(trueHrv.map((metric) => metric.date).filter(Boolean));
-  const calculated = calculatedHrvTrend(metrics, limit)
-    .filter((metric) => !trueDates.has(metric.date));
+  const rawCalculated = calculatedHrvTrend(metrics, limit);
+  const calibration = hrvCalibrationFactor(trueHrv, rawCalculated);
+  const calculated = rawCalculated
+    .filter((metric) => !trueDates.has(metric.date))
+    .map((metric) => applyHrvCalibration(metric, calibration));
   return [...trueHrv, ...calculated]
     .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
     .slice(-limit);
@@ -1964,7 +2119,8 @@ function recomputeHealthAnxietyWithDynamics({ health = {}, readings = [], now = 
       sleep: health?.scoreInputs?.sleep,
       recentSteps: stepValue != null && Number.isFinite(Number(stepValue)) ? Number(stepValue) : undefined,
       referenceAt,
-      dynamics
+      dynamics,
+      baselines: health?.baselines || {}
     })
   };
 }
@@ -2433,7 +2589,7 @@ function applyPatternHealthRead({ health = {}, patterns = null, now = new Date()
   };
 }
 
-function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour, referenceAt = null, dynamics = [] } = {}) {
+function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hour, referenceAt = null, dynamics = [], baselines = {} } = {}) {
   const factors = [];
   let raw = 2.2;
 
@@ -2471,6 +2627,23 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     }
   }
 
+  const heartRateBaseline = Number(baselines.heartRateAvg14d ?? baselines.heartRateMedian14d);
+  const heartRateValue = Number(heartRate?.value);
+  if (Number.isFinite(heartRateBaseline) && Number.isFinite(heartRateValue)) {
+    const rise = heartRateValue - heartRateBaseline;
+    if (rise >= 12 && heartRateValue >= 80 && !factors.some((factor) => factor.key === "heart_rate" && factor.points > 0.39)) {
+      raw += 0.25;
+      pushFactor(
+        factors,
+        "heart_rate",
+        "HR above recent baseline",
+        0.25,
+        `${Math.round(heartRateValue)} bpm HR is ${Math.round(rise)} bpm above recent Blood baseline.`,
+        "Water more; protein/fiber snack more; easy walk more."
+      );
+    }
+  }
+
   if (hrv?.value) {
     const value = hrv.value;
     const labelPrefix = hrv.estimated || hrv.derived ? "estimated HRV" : "HRV";
@@ -2486,6 +2659,25 @@ function estimateAnxietyState({ glucose, heartRate, hrv, sleep, recentSteps, hou
     } else if (value >= 65) {
       raw -= 0.25;
       pushFactor(factors, "hrv", `${labelPrefix} strong`, -0.25, `${value} ms ${labelPrefix} is strong.`, "Normal exercise more; water more.");
+    }
+  }
+
+  const hrvBaseline = Number(baselines.hrvAvg14d ?? baselines.hrvMedian14d);
+  const hrvValue = Number(hrv?.value);
+  if (Number.isFinite(hrvBaseline) && Number.isFinite(hrvValue) && hrvBaseline >= 12) {
+    const drop = hrvBaseline - hrvValue;
+    const dropShare = drop / hrvBaseline;
+    if (drop >= 8 && dropShare >= 0.22 && !factors.some((factor) => factor.key === "hrv" && factor.points > 0.35)) {
+      raw += isEstimatedHrvMetric(hrv) ? 0.28 : 0.35;
+      const labelPrefix = isEstimatedHrvMetric(hrv) ? "estimated HRV" : "HRV";
+      pushFactor(
+        factors,
+        "hrv",
+        `${labelPrefix} below recent baseline`,
+        isEstimatedHrvMetric(hrv) ? 0.28 : 0.35,
+        `${Math.round(hrvValue)} ms ${labelPrefix} is below recent Blood baseline.`,
+        "Water more; protein/fiber meal rhythm more; gentle walk more."
+      );
     }
   }
 
@@ -2593,7 +2785,20 @@ function latestAtOrBefore(items = [], atTime, maxAgeMs, mapper = (item) => item)
   return selected;
 }
 
-function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) {
+function fullRangeTrend(points = [], limit = MAX_ANXIETY_TREND_POINTS) {
+  const max = Math.max(2, Number(limit) || MAX_ANXIETY_TREND_POINTS);
+  if (points.length <= max) return points;
+  const selected = [];
+  const lastIndex = points.length - 1;
+  for (let index = 0; index < max; index += 1) {
+    const sourceIndex = Math.round((index / (max - 1)) * lastIndex);
+    const point = points[sourceIndex];
+    if (point && selected[selected.length - 1] !== point) selected.push(point);
+  }
+  return selected;
+}
+
+function estimateAnxietyTrend({ readings = [], health = {}, limit = MAX_ANXIETY_TREND_POINTS } = {}) {
   const trends = health?.trends || {};
   const glucosePoints = readings
     .filter((reading) => reading?.measuredAt && Number.isFinite(Number(reading.valueMgDl)))
@@ -2662,7 +2867,8 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
         sleep,
         recentSteps: steps,
         hour: easternHour(at),
-        dynamics
+        dynamics,
+        baselines: health?.baselines || {}
       });
       return {
         measuredAt: at.toISOString(),
@@ -2714,7 +2920,7 @@ function estimateAnxietyTrend({ readings = [], health = {}, limit = 240 } = {}) 
     }
   }
 
-  return points.slice(-limit);
+  return fullRangeTrend(points, limit);
 }
 
 function latestSourceEndpoint(now = new Date(), ...values) {
@@ -2776,23 +2982,26 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
     }
   };
 
+  const trends = {
+    heartRate: heartRateTrend(normalized),
+    hrv: hrvSeries,
+    sleep: sleepTrend(normalized, sleep),
+    steps: stepsTrend(normalized)
+  };
+  const baselines = {
+    heartRateAvg14d: metricAverage(normalized, "heart_rate", 14),
+    hrvAvg14d: metricAverage(hrvSeries, "hrv", 14),
+    sleepAvg14dMinutes: metricAverage(normalized, "sleep", 14),
+    stepsAvg14d: metricAverage(normalized, "steps", 14)
+  };
+
   return {
     status: normalized.length || sleep ? "connected" : "waiting_for_health_metrics",
     metricCount: normalized.length,
     lastCapturedAt,
     latest,
-    trends: {
-      heartRate: heartRateTrend(normalized),
-      hrv: hrvSeries,
-      sleep: sleepTrend(normalized, sleep),
-      steps: stepsTrend(normalized)
-    },
-    baselines: {
-      heartRateAvg14d: metricAverage(normalized, "heart_rate", 14),
-      hrvAvg14d: metricAverage(hrvSeries, "hrv", 14),
-      sleepAvg14dMinutes: metricAverage(normalized, "sleep", 14),
-      stepsAvg14d: metricAverage(normalized, "steps", 14)
-    },
+    trends,
+    baselines,
     scoreInputs: {
       sleep: sleepForScore
     },
@@ -2802,7 +3011,8 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
       hrv,
       sleep: sleepForScore,
       recentSteps,
-      referenceAt
+      referenceAt,
+      baselines
     })
   };
 }
@@ -2890,25 +3100,59 @@ function summarizeReadings(readings, health = summarizeHealthMetrics()) {
   };
 }
 
-app.get("/api/health", async (_req, res) => {
-  res.json({
-    ok: true,
-    service: "blood-aolabs",
-    generatedAt: new Date().toISOString(),
-    storage: DATABASE_URL ? "postgres" : "json-file",
-    ingestionTokenConfigured: Boolean(process.env.BLOOD_INGEST_TOKEN),
-    summaryReadAccess: "public",
-    publicMinReadingDate: PUBLIC_MIN_READING_DATE,
-    exportReadTokenConfigured: Boolean(process.env.BLOOD_READ_TOKEN)
-  });
+app.get("/api/health", async (_req, res, next) => {
+  try {
+    const bridgeSync = await readBridgeSyncState();
+    res.json({
+      ok: true,
+      service: "blood-aolabs",
+      generatedAt: new Date().toISOString(),
+      storage: DATABASE_URL ? "postgres" : "json-file",
+      ingestionTokenConfigured: Boolean(process.env.BLOOD_INGEST_TOKEN),
+      summaryReadAccess: "public",
+      publicMinReadingDate: PUBLIC_MIN_READING_DATE,
+      exportReadTokenConfigured: Boolean(process.env.BLOOD_READ_TOKEN),
+      bridgeSync
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get("/api/blood/summary", async (_req, res, next) => {
+app.get("/api/blood/summary", async (req, res, next) => {
   try {
+    const bridgeSync = await markBridgeSyncRequested(req.query?.source || "website_summary");
     const readings = await readReadings();
     const glucoseOnly = summarizeReadings(readings);
     const health = summarizeHealthMetrics(await readHealthMetrics(), await fetchSleepSummaryFallback(), glucoseOnly.latest);
-    res.json(summarizeReadings(readings, health));
+    res.json({
+      ...summarizeReadings(readings, health),
+      bridgeSync
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/bridge/sync-state", requireConfiguredToken("BLOOD_INGEST_TOKEN", "bridge"), async (_req, res, next) => {
+  try {
+    res.json({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      bridgeSync: await readBridgeSyncState()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/bridge/check-in", requireConfiguredToken("BLOOD_INGEST_TOKEN", "bridge"), async (req, res, next) => {
+  try {
+    const bridgeSync = await recordBridgeCheckIn(req.body || {});
+    res.json({
+      ok: true,
+      bridgeSync
+    });
   } catch (error) {
     next(error);
   }

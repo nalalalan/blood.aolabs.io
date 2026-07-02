@@ -19,6 +19,8 @@ Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io
 Current bridge/UI boundary:
 
 - Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
+- Blood Bridge reads a seven-day Health Connect window, queues immediate background work after app open, permission grant, boot, and app update, then maintains a rolling invisible worker plus the durable WorkManager periodic worker.
+- Opening `blood.aolabs.io` records a fresh-sync request and the website shows bridge request/check-in state; Android may still delay invisible background work, so Blood exposes freshness instead of making manual upload buttons the normal path.
 - Partial health uploads are merged by metric id and read back with per-type history limits. Dense recent heart-rate samples must not crowd older HR days out of the summary.
 - The public HR graph uses five-minute median buckets to keep several days visible while preserving the latest raw HR point for the current reading.
 - Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood shows both the health-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
@@ -29,6 +31,7 @@ Current bridge/UI boundary:
 Anxiety score source function: `server.js::estimateAnxietyState`.
 Anxiety trend source function: `server.js::estimateAnxietyTrend`.
 Time-pattern source function: `server.js::estimateInstabilityPatterns`.
+Bridge freshness source functions: `server.js::markBridgeSyncRequested` and `server.js::recordBridgeCheckIn`.
 
 Calculation:
 
@@ -42,10 +45,12 @@ Calculation:
   - >=100 bpm: +0.85
   - >=85 bpm: +0.40
   - 55-75 bpm: -0.15
+  - >=12 bpm above recent Blood baseline and >=80 bpm, when not already high enough for a stronger HR factor: +0.25
 - HRV:
   - <25 ms: +0.80
   - <40 ms: +0.45
   - >=65 ms: -0.25
+  - >=8 ms and >=22% below recent Blood baseline, when not already high enough for a stronger HRV factor: +0.28 for estimated HRV or +0.35 for source HRV
 - Sleep:
   - <300 min: +0.90
   - <360 min: +0.45
@@ -74,7 +79,7 @@ The top condition read is taken from current uploaded source values plus recent 
 
 The watchout surface groups recent source records by Eastern time block: morning, midday, afternoon, evening, and night. It scores glucose, HR, true HRV, HRV-change, sleep, and steps, reduces dense heart-rate records to hourly median buckets, and reports a visible window when there is a concrete actionable glucose, HR, HRV-change, or step reason to name. If the rolling window is thin, it still reports the best abnormal signal it can infer from the latest uploaded values or recent dynamics and pairs it with a concrete food, water, or movement action. Sleep-only history stays on the sleep graph and may remain part of the bounded score context, but it does not produce a visible instruction about an old night. The visible detail must name concrete actionable source states and values, such as `HR too high (114 bpm)`, `glucose near high edge (159 mg/dL)`, or `HRV dip`, rather than a vague aggregate such as `2 of 7 source samples read high, low, short, light, or raised` or a dead `Need more samples` learning state. The rolling window is 45 days, and the pattern is recomputed from stored source records on each summary API response so it changes as additional bridge data arrives.
 
-The anxiety graph is the first graph in the aligned stack. It reconstructs historical score points from stored glucose readings and health-trend samples, keeps only points with at least two source inputs, recomputes small dynamic factors from the time history leading into each point, and appends the latest anxiety score as the newest visible point when available. The visible chart stack is six graphs: anxiety, glucose, HR, HRV, sleep, and steps. The chart renderer separates source measurement time from plotting endpoint: current latest-upload values use the current upload endpoint for x-position so the last current point lands on the right edge, while the label and tooltip still show the true source measurement time. In short ranges such as 24h, HRV, sleep, and steps use adjacent context points for the clipped line path so the graph reads like a zoom into the seven-day trend, not a single isolated dot. HR is graphed from retained multi-day history using five-minute median buckets so partial dense syncs do not make older HR disappear. Steps are collapsed to one latest daily total per Eastern date so repeated Samsung/Health Connect uploads cannot multiply the day.
+The anxiety graph is the first graph in the aligned stack. It reconstructs historical score points from stored glucose readings and health-trend samples from the beginning of the available input history, keeps only points with at least two source inputs, recomputes small dynamic and recent-baseline factors from the time history leading into each point, and appends the latest anxiety score as the newest visible point when available. Dense histories are sampled across the full range with a default cap of 5,000 anxiety points instead of slicing off the beginning. The visible chart stack is six graphs: anxiety, glucose, HR, HRV, sleep, and steps. The chart renderer separates source measurement time from plotting endpoint: current latest-upload values use the current upload endpoint for x-position so the last current point lands on the right edge, while the label and tooltip still show the true source measurement time. In short ranges such as 24h, HRV, sleep, and steps use adjacent context points for the clipped line path so the graph reads like a zoom into the seven-day trend, not a single isolated dot. HR is graphed from retained multi-day history using five-minute median buckets so partial dense syncs do not make older HR disappear. Steps are collapsed to one latest daily total per Eastern date so repeated Samsung/Health Connect uploads cannot multiply the day.
 
 The glucose graph and score use active readings only. The website's latest-readings table includes a protected Disregard action for one glucose reading at a time. This is a soft-delete control using the Blood edit key rather than the bridge ingest token: it removes that measurement from current Blood calculations and visible graphs while preserving the raw record for protected audit/export.
 
@@ -88,4 +93,6 @@ HRV estimate tightening:
 - candidate windows with high median HR, high HR standard deviation, high median/p90 HR steps, or high p90 RR difference are rejected
 - noisy adjacent pairs are removed with tighter median-absolute-deviation gates before RMSSD-like calculation
 - selected windows must be independent or low-overlap; at least three windows and 75 accepted pairs are required before an estimated HRV is emitted
-- selected windows are combined by pair-count-weighted median, and API metadata exposes pair count, rejected pair count, median gap, coverage ratio, selected window count, window spread, quality, and confidence
+- selected windows are combined by pair-count-weighted median across up to 12 candidate windows
+- when at least two source RMSSD days overlap proxy-estimate days, later proxy HRV is calibrated by the median true/proxy ratio within bounded limits
+- API metadata exposes pair count, rejected pair count, median gap, coverage ratio, selected window count, window spread, quality, confidence, calibration factor, calibration sample count, calibration spread, and uncalibrated value when available

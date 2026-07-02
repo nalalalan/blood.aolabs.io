@@ -1,4 +1,4 @@
-const CACHE_NAME = "blood-aolabs-20260630-no-color-v2";
+const CACHE_NAME = "blood-aolabs-20260702-history-hrv-sync";
 const ASSETS = [
   "./",
   "./index.html",

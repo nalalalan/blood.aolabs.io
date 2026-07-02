@@ -10,8 +10,9 @@ class BootReceiver : BroadcastReceiver() {
         if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
         if (BloodBridgeSync.token(context).isBlank()) return
+        BloodBridgeSync.setAlwaysOnEnabled(context, true)
         BloodBridgeSync.scheduleAutoSync(context)
-        if (BloodBridgeSync.isAlwaysOnEnabled(context) && ContourMeterSync.hasBluetoothPermission(context)) {
+        if (ContourMeterSync.hasBluetoothPermission(context)) {
             BloodBridgeSync.queueImmediateSync(context)
             BloodBridgeSync.saveAutoSyncStatus(
                 context,

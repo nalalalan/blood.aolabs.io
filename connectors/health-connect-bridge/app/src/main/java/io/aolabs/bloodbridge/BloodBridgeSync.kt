@@ -14,8 +14,10 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.Data
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -38,8 +40,14 @@ object BloodBridgeSync {
     const val DEFAULT_HEALTH_METRICS_ENDPOINT = "https://blood.aolabs.io/api/ingest/health-metrics"
     const val PREFS_NAME = "blood-bridge"
     const val AUTO_WORK_NAME = "blood-auto-sync"
+    const val IMMEDIATE_WORK_NAME = "blood-immediate-sync"
+    const val ROLLING_WORK_NAME = "blood-rolling-sync"
     const val ALWAYS_ON_ENABLED_KEY = "alwaysOnUploadEnabled"
     const val LAST_AUTO_SYNC_STATUS_KEY = "lastAutoSyncStatus"
+    const val LAST_AUTO_SYNC_STARTED_AT_KEY = "lastAutoSyncStartedAt"
+    const val AUTO_SYNC_LOOKBACK_DAYS = 7
+    const val ROLLING_SYNC_DELAY_MINUTES = 5L
+    private const val MIN_AUTO_SYNC_GAP_MILLIS = 4 * 60 * 1000L
     private const val HEALTH_UPLOAD_BATCH_RECORDS = 150
     private const val HEALTH_UPLOAD_BATCH_BYTES = 120_000
     private const val HEALTH_CONNECT_PAGE_SIZE = 1000
@@ -72,6 +80,11 @@ object BloodBridgeSync {
         endpoint.trim()
             .replace("/api/ingest/glucose-readings", "/api/ingest/health-metrics")
             .ifBlank { DEFAULT_HEALTH_METRICS_ENDPOINT }
+
+    fun bridgeCheckInEndpoint(endpoint: String = DEFAULT_ENDPOINT): String =
+        endpoint.trim()
+            .replace("/api/ingest/glucose-readings", "/api/bridge/check-in")
+            .ifBlank { "https://blood.aolabs.io/api/bridge/check-in" }
 
     fun packagedToken(): String = BuildConfig.DEFAULT_BRIDGE_TOKEN.trim()
 
@@ -139,6 +152,7 @@ object BloodBridgeSync {
             ExistingPeriodicWorkPolicy.UPDATE,
             periodic
         )
+        queueRollingSync(context)
     }
 
     fun cancelAutoSync(context: Context) {
@@ -153,7 +167,48 @@ object BloodBridgeSync {
             .setConstraints(constraints)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
-        WorkManager.getInstance(context).enqueue(oneTime)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            IMMEDIATE_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            oneTime
+        )
+    }
+
+    fun queueRollingSync(context: Context, delayMinutes: Long = ROLLING_SYNC_DELAY_MINUTES) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val oneTime = OneTimeWorkRequestBuilder<BloodSyncWorker>()
+            .setConstraints(constraints)
+            .setInitialDelay(delayMinutes.coerceAtLeast(1), TimeUnit.MINUTES)
+            .setInputData(Data.Builder().putBoolean("rolling", true).build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            ROLLING_WORK_NAME,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            oneTime
+        )
+    }
+
+    fun markAutoSyncStarted(context: Context): Boolean {
+        val now = System.currentTimeMillis()
+        val prefs = prefs(context)
+        val previous = prefs.getLong(LAST_AUTO_SYNC_STARTED_AT_KEY, 0L)
+        if (previous > 0 && now - previous < MIN_AUTO_SYNC_GAP_MILLIS) return false
+        prefs.edit().putLong(LAST_AUTO_SYNC_STARTED_AT_KEY, now).apply()
+        return true
+    }
+
+    fun postBridgeCheckIn(context: Context, status: String, accepted: Int, message: String) {
+        val endpoint = bridgeCheckInEndpoint(endpoint(context))
+        val token = token(context)
+        if (token.isBlank()) return
+        val payload = JSONObject()
+            .put("checkedAt", Instant.now().toString())
+            .put("status", status)
+            .put("accepted", accepted)
+            .put("message", message.take(240))
+        runCatching { postPayload(endpoint, token, payload) }
     }
 
     suspend fun sync(context: Context, days: Int): SyncResult {
