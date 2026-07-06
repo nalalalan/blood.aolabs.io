@@ -172,6 +172,32 @@ test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
   assert.equal(health.anxiety.suggestion.source, "heart_rate");
 });
 
+test("sleep trend totals same-date sleep sessions instead of keeping only the latest session", () => {
+  const metrics = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-07-06T01:00:00.000Z",
+    sleepSessions: [
+      {
+        startTime: "2026-07-05T06:00:00.000Z",
+        endTime: "2026-07-05T12:00:00.000Z",
+        stages: [{ stage: "sleeping", startTime: "2026-07-05T06:15:00.000Z", endTime: "2026-07-05T11:45:00.000Z" }]
+      },
+      {
+        startTime: "2026-07-05T20:00:00.000Z",
+        endTime: "2026-07-05T20:55:00.000Z",
+        stages: []
+      }
+    ]
+  });
+  const health = summarizeHealthMetrics(metrics, null, null, new Date("2026-07-06T01:05:00.000Z"));
+
+  assert.equal(health.trends.sleep.length, 1);
+  assert.equal(health.trends.sleep[0].value, 415);
+  assert.equal(health.trends.sleep[0].sessionCount, 2);
+  assert.equal(health.trends.sleep[0].aggregation, "daily_sleep_total");
+  assert.equal(health.latest.sleep.value, 415);
+});
+
 test("heart-rate trend preserves multiple days of dense watch history", () => {
   const start = Date.UTC(2026, 5, 26, 0, 0, 0);
   const heartRate = Array.from({ length: 3 * 24 * 60 }, (_, index) => ({
@@ -293,10 +319,11 @@ test("estimated HRV ignores sparse sleep boundary samples", () => {
   assert.deepEqual(health.trends.hrv, []);
 });
 
-test("HRV graph uses adjacent context points in short ranges", () => {
+test("all health graphs use adjacent context points in short ranges", () => {
   const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 
-  assert.match(appSource, /\["hrv",\s*"sleep",\s*"steps"\]\.includes\(key\)/);
+  assert.match(appSource, /\["anxiety",\s*"glucose",\s*"hr",\s*"hrv",\s*"sleep",\s*"steps"\]\.includes\(key\)/);
+  assert.match(appSource, /!visiblePoints\.length\) return visiblePoints/);
 });
 
 test("does not estimate HRV from too few heart-rate samples", () => {

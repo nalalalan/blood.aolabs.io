@@ -1008,6 +1008,12 @@ function latestMetric(metrics, type) {
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime())[0] || null;
 }
 
+function latestByTime(values = [], field = "measuredAt") {
+  return values
+    .filter((value) => value?.[field])
+    .sort((a, b) => new Date(b[field]).getTime() - new Date(a[field]).getTime())[0] || null;
+}
+
 function latestSleepFromFallback(sleepSummary) {
   const latest = sleepSummary?.latest;
   if (!latest?.endTime) return null;
@@ -1028,6 +1034,87 @@ function latestSleepFromFallback(sleepSummary) {
     stageMinutes: latest.stageMinutes || {},
     capturedAt: latest.capturedAt || sleepSummary.lastCapturedAt || null
   };
+}
+
+function mergeStageMinutes(target = {}, source = {}) {
+  const merged = { ...target };
+  for (const [key, value] of Object.entries(source || {})) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) continue;
+    merged[key] = Number(merged[key] || 0) + number;
+  }
+  return merged;
+}
+
+function sleepDurationMinutes(metric) {
+  const duration = Number(metric?.durationMinutes);
+  if (Number.isFinite(duration)) return duration;
+  const start = new Date(metric?.startTime).getTime();
+  const end = new Date(metric?.endTime || metric?.measuredAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  return Math.round((end - start) / 60_000);
+}
+
+function dailySleepTotals(metrics, fallback = null, limit = 90) {
+  const byDate = new Map();
+  const sourceMetrics = metrics.filter((item) => item.type === "sleep");
+  if (fallback?.date && fallback?.measuredAt && !sourceMetrics.some((metric) => metric.date === fallback.date)) {
+    sourceMetrics.push(fallback);
+  }
+  for (const metric of sourceMetrics) {
+    if (!metric?.date || !metric?.measuredAt) continue;
+    const asleepMinutes = Number(metric.asleepMinutes ?? metric.value);
+    if (!Number.isFinite(asleepMinutes)) continue;
+    const durationMinutes = sleepDurationMinutes(metric);
+    const awakeMinutes = Number(metric.awakeMinutes);
+    const existing = byDate.get(metric.date) || {
+      metricId: `sleep-day-${metric.date}`,
+      type: "sleep",
+      source: metric.source || "health-connect",
+      sourcePackage: metric.sourcePackage || "",
+      date: metric.date,
+      unit: "minutes_asleep",
+      value: 0,
+      asleepMinutes: 0,
+      durationMinutes: 0,
+      awakeMinutes: 0,
+      stageMinutes: {},
+      sessionCount: 0,
+      startTime: null,
+      endTime: null,
+      measuredAt: metric.measuredAt,
+      capturedAt: metric.capturedAt || null,
+      aggregation: "daily_sleep_total"
+    };
+    existing.sessionCount += 1;
+    existing.value += asleepMinutes;
+    existing.asleepMinutes += asleepMinutes;
+    if (Number.isFinite(durationMinutes)) existing.durationMinutes += durationMinutes;
+    if (Number.isFinite(awakeMinutes)) existing.awakeMinutes += awakeMinutes;
+    existing.stageMinutes = mergeStageMinutes(existing.stageMinutes, metric.stageMinutes);
+    if (metric.source && !existing.source.includes(metric.source)) {
+      existing.source = existing.source ? `${existing.source}+${metric.source}` : metric.source;
+    }
+    if (metric.sourcePackage && !existing.sourcePackage.includes(metric.sourcePackage)) {
+      existing.sourcePackage = existing.sourcePackage ? `${existing.sourcePackage}+${metric.sourcePackage}` : metric.sourcePackage;
+    }
+    if (metric.startTime && (!existing.startTime || new Date(metric.startTime).getTime() < new Date(existing.startTime).getTime())) {
+      existing.startTime = metric.startTime;
+    }
+    const metricEnd = metric.endTime || metric.measuredAt;
+    if (metricEnd && (!existing.endTime || new Date(metricEnd).getTime() > new Date(existing.endTime).getTime())) {
+      existing.endTime = metricEnd;
+      existing.measuredAt = metric.measuredAt || metricEnd;
+    }
+    if (metric.capturedAt && (!existing.capturedAt || new Date(metric.capturedAt).getTime() > new Date(existing.capturedAt).getTime())) {
+      existing.capturedAt = metric.capturedAt;
+    }
+    byDate.set(metric.date, existing);
+  }
+  return Array.from(byDate.values())
+    .filter((metric) => Number.isFinite(Number(metric.value)))
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
+    .slice(-limit);
 }
 
 function stepMetricSortTime(metric) {
@@ -1586,31 +1673,7 @@ function hrvTrend(metrics, limit = 900) {
 }
 
 function sleepTrend(metrics, fallback = null, limit = 90) {
-  const byDate = new Map();
-  for (const metric of metrics.filter((item) => item.type === "sleep")) {
-    if (!metric?.date || !metric?.measuredAt) continue;
-    const existing = byDate.get(metric.date);
-    if (existing && new Date(existing.measuredAt).getTime() >= new Date(metric.measuredAt).getTime()) continue;
-    byDate.set(metric.date, metric);
-  }
-  if (fallback?.date && fallback?.measuredAt && !byDate.has(fallback.date)) {
-    byDate.set(fallback.date, fallback);
-  }
-  return Array.from(byDate.values())
-    .filter((metric) => Number.isFinite(Number(metric.value ?? metric.asleepMinutes)))
-    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime())
-    .slice(-limit)
-    .map((metric) => ({
-      metricId: metric.metricId,
-      type: "sleep",
-      source: metric.source,
-      sourcePackage: metric.sourcePackage,
-      measuredAt: metric.measuredAt,
-      date: metric.date,
-      value: Number(metric.value ?? metric.asleepMinutes),
-      unit: "minutes_asleep",
-      capturedAt: metric.capturedAt
-    }));
+  return dailySleepTotals(metrics, fallback, limit);
 }
 
 function stepsTrend(metrics, limit = 90) {
@@ -2938,7 +3001,8 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
   const normalized = metrics
     .filter((metric) => metric?.type && metric?.measuredAt)
     .sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
-  const sleep = latestMetric(normalized, "sleep") || latestSleepFromFallback(sleepFallback);
+  const sleepSeries = sleepTrend(normalized, latestSleepFromFallback(sleepFallback));
+  const sleep = latestByTime(sleepSeries) || null;
   const heartRate = latestMetric(normalized, "heart_rate");
   const hrvSeries = hrvTrend(normalized);
   const hrv = hrvSeries.at(-1) || null;
@@ -2985,13 +3049,13 @@ function summarizeHealthMetrics(metrics = [], sleepFallback = null, latestGlucos
   const trends = {
     heartRate: heartRateTrend(normalized),
     hrv: hrvSeries,
-    sleep: sleepTrend(normalized, sleep),
+    sleep: sleepSeries,
     steps: stepsTrend(normalized)
   };
   const baselines = {
     heartRateAvg14d: metricAverage(normalized, "heart_rate", 14),
     hrvAvg14d: metricAverage(hrvSeries, "hrv", 14),
-    sleepAvg14dMinutes: metricAverage(normalized, "sleep", 14),
+    sleepAvg14dMinutes: metricAverage(sleepSeries, "sleep", 14),
     stepsAvg14d: metricAverage(normalized, "steps", 14)
   };
 
