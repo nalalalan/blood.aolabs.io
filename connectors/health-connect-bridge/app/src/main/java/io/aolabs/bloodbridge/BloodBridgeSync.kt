@@ -22,6 +22,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -169,7 +170,7 @@ object BloodBridgeSync {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.KEEP,
             oneTime
         )
     }
@@ -228,6 +229,7 @@ object BloodBridgeSync {
                 acceptedTotal += meterResult.accepted
                 statuses.add("CONTOUR meter: ${meterResult.response}")
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 statuses.add("CONTOUR meter: ${userFacingError(error)}")
             }
         } else {
@@ -239,6 +241,7 @@ object BloodBridgeSync {
             acceptedTotal += glucoseResult.accepted
             statuses.add("Health Connect glucose: ${glucoseResult.response}")
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             statuses.add("Health Connect glucose: ${userFacingError(error)}")
         }
 
@@ -247,6 +250,7 @@ object BloodBridgeSync {
             acceptedTotal += metricsResult.accepted
             statuses.add("Health metrics: ${metricsResult.response}")
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             statuses.add("Health metrics: ${userFacingError(error)}")
         }
 

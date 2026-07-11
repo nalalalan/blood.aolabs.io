@@ -56,7 +56,11 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(mainActivity, /queueImmediateSync\(this\)/);
   assert.match(worker, /AUTO_SYNC_LOOKBACK_DAYS/);
   assert.match(worker, /queueRollingSync/);
+  assert.match(worker, /CancellationException/);
   assert.match(bridge, /bridgeCheckInEndpoint/);
+  assert.match(bridge, /ExistingWorkPolicy\.KEEP/);
+  assert.doesNotMatch(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.REPLACE/);
+  assert.match(bridge, /if \(error is CancellationException\) throw error/);
   assert.match(server, /markBridgeSyncRequested/);
   assert.match(server, /\/api\/bridge\/check-in/);
 });

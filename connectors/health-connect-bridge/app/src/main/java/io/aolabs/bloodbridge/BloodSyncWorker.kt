@@ -3,6 +3,7 @@ package io.aolabs.bloodbridge
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 
 class BloodSyncWorker(
@@ -28,6 +29,10 @@ class BloodSyncWorker(
             BloodBridgeSync.postBridgeCheckIn(applicationContext, "synced", result.accepted, result.response)
             BloodBridgeSync.queueRollingSync(applicationContext)
             Result.success()
+        } catch (error: CancellationException) {
+            BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync was interrupted ${Instant.now()}. The next scheduled run stays queued.")
+            BloodBridgeSync.queueRollingSync(applicationContext)
+            throw error
         } catch (error: Exception) {
             val message = BloodBridgeSync.userFacingError(error)
             BloodBridgeSync.saveAutoSyncStatus(applicationContext, "Auto sync failed ${Instant.now()}: $message")

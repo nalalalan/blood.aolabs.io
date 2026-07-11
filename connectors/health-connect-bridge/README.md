@@ -18,7 +18,7 @@ Default endpoint:
 
 `https://blood.aolabs.io/api/ingest/glucose-readings`
 
-The released APK is preconfigured for the Blood upload endpoint. Background sync runs invisibly through WorkManager after permissions are granted. No persistent Blood Bridge notification is used. Opening `blood.aolabs.io` records a fresh-sync request on the server; the bridge checks in and uploads the latest CONTOUR and Health Connect data when Android next allows background work. Android may still delay invisible background work, so the website shows the source freshness state instead of asking for manual bridge uploads. The recurring worker reads a recent Health Connect window in pages so dense Samsung heart-rate records are not lost behind an old first batch.
+The released APK is preconfigured for the Blood upload endpoint. Background sync runs invisibly through WorkManager after permissions are granted. No persistent Blood Bridge notification is used. Opening `blood.aolabs.io` records a fresh-sync request on the server; the bridge checks in and uploads the latest CONTOUR and Health Connect data when Android next allows background work. Android may still delay invisible background work, so the website shows the source freshness state instead of asking for manual bridge uploads. Opening the bridge or requesting a fresh run must keep any active upload alive instead of replacing and cancelling it. The recurring worker reads a recent Health Connect window in pages so dense Samsung heart-rate records are not lost behind an old first batch.
 
 Advanced diagnostics can override the glucose endpoint locally. The metrics endpoint is derived from that URL by replacing `/api/ingest/glucose-readings` with `/api/ingest/health-metrics`.
 

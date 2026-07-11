@@ -1,4 +1,4 @@
-const CACHE_NAME = "blood-aolabs-20260705-sleep-chart-continuity";
+const CACHE_NAME = "blood-aolabs-20260711-sync-keep";
 const ASSETS = [
   "./",
   "./index.html",
