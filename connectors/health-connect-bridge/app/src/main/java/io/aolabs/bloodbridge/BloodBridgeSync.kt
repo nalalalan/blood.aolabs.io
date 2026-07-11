@@ -170,7 +170,7 @@ object BloodBridgeSync {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             oneTime
         )
     }

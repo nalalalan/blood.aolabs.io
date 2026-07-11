@@ -20,8 +20,8 @@ Current bridge/UI boundary:
 
 - Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
 - Blood Bridge reads a seven-day Health Connect window, queues immediate background work after app open, permission grant, boot, and app update, then maintains a rolling invisible worker plus the durable WorkManager periodic worker.
-- Fresh-run requests keep an active bridge upload alive instead of replacing and cancelling it, and worker cancellation is not reported as a completed no-data sync.
-- Opening `blood.aolabs.io` records a fresh-sync request and the website shows bridge request/check-in state; Android may still delay invisible background work, so Blood exposes freshness instead of making manual upload buttons the normal path.
+- After a CONTOUR meter reading, opening `blood.aolabs.io` records a fresh-sync request; the bridge uploads stored meter records first, then Health Connect records, when Android next allows invisible background work.
+- Fresh-run requests append a follow-up immediate run when one is already active instead of replacing/cancelling the old run or dropping the new request, and worker cancellation is not reported as a completed no-data sync.
 - Partial health uploads are merged by metric id and read back with per-type history limits. Dense recent heart-rate samples must not crowd older HR days out of the summary.
 - The public HR graph uses five-minute median buckets to keep several days visible while preserving the latest raw HR point for the current reading.
 - Heart rate is current only when Samsung Health or another source writes current samples into Health Connect and the Blood Bridge uploads them. Blood shows both the health-upload time and the latest Samsung/Health Connect HR source time so a stale shared copy is not confused with a stale website.
