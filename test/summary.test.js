@@ -74,6 +74,14 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(bridge, /Health Connect needs heart rate, steps, sleep, and background access\./);
   assert.doesNotMatch(bridge, /return "Sync accepted by Blood API\. \$body"/);
   assert.match(mainActivity, /ensureAutoSync\(\s*result\.response,/);
+  assert.match(bridge, /healthStreamFailure\("heart rate", error\)/);
+  assert.match(bridge, /healthStreamFailure\("HRV", error\)/);
+  assert.match(bridge, /healthStreamFailure\("steps", error\)/);
+  assert.match(bridge, /healthStreamFailure\("sleep", error\)/);
+  assert.match(bridge, /sample\.beatsPerMinute in 25L\.\.240L/);
+  assert.match(bridge, /record\.count in 0L\.\.200000L/);
+  assert.match(bridge, /Health Connect records uploaded/);
+  assert.match(bridge, /records retry queued/);
   assert.match(worker, /CancellationException/);
   assert.match(bridge, /bridgeCheckInEndpoint/);
   assert.match(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.APPEND_OR_REPLACE/);
