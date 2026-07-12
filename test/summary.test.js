@@ -55,7 +55,7 @@ test("bridge setup does not present manual upload as the normal path", () => {
     assert.doesNotMatch(text, /text\s*=\s*"Start automatic upload"/);
   }
   assert.match(readme, /Tap `Connect Blood`/);
-  assert.match(html, /blood-bridge-0\.14\.0\.apk/);
+  assert.match(html, /blood-bridge-0\.15\.0\.apk/);
   assert.match(html, /Tap Connect Blood/);
   assert.doesNotMatch(html, /Grant Bluetooth permission|Grant Health Connect metrics|Leave Android background sync allowed/);
   assert.match(mainActivity, /text = "Connect Blood"/);
