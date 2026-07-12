@@ -29,7 +29,8 @@ class MainActivity : ComponentActivity() {
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
         if (BloodBridgeSync.requiredMetricPermissions.all { permission -> granted.contains(permission) }) {
-            ensureAutoSync("Blood is connected. Upload queued for your meter, steps, heart rate, and sleep.")
+            ensureAutoSync("Permissions saved. Uploading your meter, steps, heart rate, and sleep now.", queueImmediate = false)
+            syncBlood(days = BloodBridgeSync.AUTO_SYNC_LOOKBACK_DAYS)
         } else {
             setStatus("Health Connect still needs ${missingHealthPermissions(granted)}. Tap Connect Blood and choose Allow all.")
         }
@@ -291,18 +292,29 @@ class MainActivity : ComponentActivity() {
             setStatus("Checking CONTOUR meter and Health Connect metrics.")
             try {
                 val result = withContext(Dispatchers.IO) {
-                    BloodBridgeSync.sync(this@MainActivity, days)
+                    val syncResult = BloodBridgeSync.sync(this@MainActivity, days)
+                    BloodBridgeSync.postBridgeCheckIn(
+                        this@MainActivity,
+                        "synced",
+                        syncResult.accepted,
+                        syncResult.response
+                    )
+                    syncResult
                 }
                 ensureAutoSync(
                     if (result.accepted > 0) {
-                        "Automatic sync accepted ${result.accepted} record(s)."
+                        "Blood received ${result.accepted} record(s). You can open blood.aolabs.io now."
                     } else {
                         result.response
                     },
                     queueImmediate = false
                 )
             } catch (error: Exception) {
-                setStatus("Automatic sync did not finish. ${BloodBridgeSync.userFacingError(error)}")
+                val message = BloodBridgeSync.userFacingError(error)
+                withContext(Dispatchers.IO) {
+                    BloodBridgeSync.postBridgeCheckIn(this@MainActivity, "blocked", 0, message)
+                }
+                setStatus("Upload did not finish. $message")
             }
         }
     }

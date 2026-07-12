@@ -61,6 +61,9 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(mainActivity, /text = "Connect Blood"/);
   assert.match(mainActivity, /requestHealthConnectPermissions/);
   assert.match(mainActivity, /missingHealthPermissions/);
+  assert.match(mainActivity, /Permissions saved\. Uploading your meter, steps, heart rate, and sleep now\./);
+  assert.match(mainActivity, /syncBlood\(days = BloodBridgeSync\.AUTO_SYNC_LOOKBACK_DAYS\)/);
+  assert.match(mainActivity, /BloodBridgeSync\.postBridgeCheckIn\(/);
   assert.match(app, /Open Blood Bridge and tap Connect Blood/);
   assert.match(mainActivity, /queueImmediateSync\(this\)/);
   assert.match(worker, /AUTO_SYNC_LOOKBACK_DAYS/);
