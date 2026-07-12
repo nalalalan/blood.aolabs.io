@@ -19,7 +19,7 @@ Current source state checked 2026-06-27 6:13 PM ET from `https://blood.aolabs.io
 Current bridge/UI boundary:
 
 - Recurring bridge sync reads a recent Health Connect window in pages so dense heart-rate records are not dropped behind an old first batch.
-- After `Connect Blood` receives the required permissions, the open Blood Bridge reads a seven-day Health Connect window and performs the first meter and health upload directly, then posts the accepted or blocked result to the bridge-state endpoint.
+- After `Connect Blood` receives the required permissions, the open Blood Bridge reads a seven-day Health Connect window and performs the first meter and health upload directly, then posts the accepted or blocked result to the bridge-state endpoint. A CONTOUR scan timeout is isolated to the meter result and cannot cancel steps, heart-rate, or sleep upload.
 - Later app opens, fresh-run requests, permission grants, boot, and app updates also queue background work; the bridge maintains a rolling invisible worker plus the durable WorkManager periodic worker.
 - After a CONTOUR meter reading, opening `blood.aolabs.io` records a fresh-sync request; the bridge uploads stored meter records first, then Health Connect records, when Android next allows invisible background work.
 - Fresh-run requests append a follow-up immediate run when one is already active instead of replacing/cancelling the old run or dropping the new request, and worker cancellation is not reported as a completed no-data sync.

@@ -557,7 +557,7 @@ function renderAllCharts(data) {
   if (!allPoints.length) {
     renderBoundary(
       "No graph data reached Blood.",
-      "Install Blood Bridge 0.15.0, open it, and tap Connect Blood. The open app uploads immediately, then Android keeps future uploads scheduled."
+      "Install Blood Bridge 0.16.0, open it, and tap Connect Blood. Health Connect uploads even when the CONTOUR meter is not nearby."
     );
     if (rangeSummary) rangeSummary.textContent = "No data";
     if (rangeDetail) rangeDetail.textContent = "Selected range.";
