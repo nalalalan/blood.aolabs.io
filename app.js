@@ -557,7 +557,7 @@ function renderAllCharts(data) {
   if (!allPoints.length) {
     renderBoundary(
       "No graph data reached Blood.",
-      "Install or update Blood Bridge, open it once, and grant Bluetooth plus Health Connect metrics. Android then runs the invisible uploader."
+      "Install Blood Bridge 0.14.0, open it, and tap Connect Blood. Android then asks for the needed permissions and runs the uploader."
     );
     if (rangeSummary) rangeSummary.textContent = "No data";
     if (rangeDetail) rangeDetail.textContent = "Selected range.";

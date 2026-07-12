@@ -33,6 +33,7 @@ test("top health strip renders one readable health text block", () => {
 });
 
 test("bridge setup does not present manual upload as the normal path", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
   const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
   const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const mainActivity = fs.readFileSync(
@@ -54,6 +55,9 @@ test("bridge setup does not present manual upload as the normal path", () => {
     assert.doesNotMatch(text, /text\s*=\s*"Start automatic upload"/);
   }
   assert.match(readme, /Tap `Connect Blood`/);
+  assert.match(html, /blood-bridge-0\.14\.0\.apk/);
+  assert.match(html, /Tap Connect Blood/);
+  assert.doesNotMatch(html, /Grant Bluetooth permission|Grant Health Connect metrics|Leave Android background sync allowed/);
   assert.match(mainActivity, /text = "Connect Blood"/);
   assert.match(mainActivity, /requestHealthConnectPermissions/);
   assert.match(mainActivity, /missingHealthPermissions/);

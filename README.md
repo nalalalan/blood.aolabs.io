@@ -28,7 +28,7 @@ The website cannot directly read another phone app's private storage. Glucose co
 
 ## Phone setup
 
-Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bridge.apk`.
+Download Blood Bridge 0.14.0 from `https://blood.aolabs.io/downloads/blood-bridge-0.14.0.apk`.
 
 1. Install or update Blood Bridge on the Android phone.
 2. Open Blood Bridge.
@@ -44,7 +44,7 @@ Health Connect metrics:
 1. Android 14+: open Settings -> Security and privacy -> Privacy Controls -> Health Connect.
 2. Android 13 or lower: install Health Connect from the Play Store, then open it from Settings -> Apps -> Health Connect.
 3. Confirm the phone has sources for heart rate, steps, sleep, and HRV if a true RMSSD source is available.
-4. Tap `Grant Health Connect metrics permission` in Blood Bridge.
+4. Tap `Connect Blood` in Blood Bridge and allow Health Connect access.
 
 HR should stay current when the watch or phone writes current heart-rate samples into Health Connect and the bridge uploads them. Blood separates those two freshness states on the page: health upload time, and the latest Samsung/Health Connect HR sample time. If Samsung Health is visibly newer than Blood while Blood shows an older HR source time, the shared Health Connect copy is stale or delayed; Blood is not reading Samsung Health's private app store directly. HRV is true only when Health Connect exposes RMSSD HRV records. When Samsung Health does not expose HRV, Blood calculates a labeled estimate from dense sleep/rest heart-rate samples, trims sleep-window edges, rejects noisy or sparse segments, requires at least three low-overlap clean windows and at least 75 accepted adjacent pairs, reports window spread, and waits if the sample set is too thin or too noisy. If true RMSSD and proxy HRV exist on overlapping source dates, Blood calibrates later estimated HRV against Alan's own true-HRV/proxy ratio. A truly live watch feed requires a separate Samsung SDK or watch-sensor bridge rather than the current Health Connect phone bridge.
 
