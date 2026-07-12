@@ -262,6 +262,12 @@ function easternDateString(value = new Date()) {
 }
 
 function stableMetricId(metric) {
+  const isDailyStepTotal = metric.type === "steps" &&
+    /^health-connect:steps-day:\d{4}-\d{2}-\d{2}$/.test(String(metric.clientRecordId || ""));
+  if (isDailyStepTotal) {
+    const dailyBasis = [metric.clientRecordId, metric.type].filter(Boolean).join("|");
+    return crypto.createHash("sha256").update(dailyBasis).digest("hex").slice(0, 40);
+  }
   const basis = [
     metric.metricId,
     metric.clientRecordId,
@@ -361,15 +367,20 @@ function sanitizeHealthMetric(metric, type, capturedAt, source) {
     const startTime = parseTime(metric.startTime || metric.start || metric.measuredAt, "steps_start");
     const endTime = parseTime(metric.endTime || metric.end || metric.measuredAt, "steps_end");
     const value = Math.round(numberInRange(metric.count ?? metric.steps ?? metric.value, 0, 200000, "steps"));
+    const clientRecordId = clampText(metric.clientRecordId || metric.metricId);
+    const isDailyStepTotal = /^health-connect:steps-day:\d{4}-\d{2}-\d{2}$/.test(clientRecordId);
+    const measuredAt = isDailyStepTotal && new Date(endTime).getTime() > new Date(capturedAt).getTime()
+      ? capturedAt
+      : endTime;
     const sanitized = {
       metricId: "",
-      clientRecordId: clampText(metric.clientRecordId || metric.metricId),
+      clientRecordId,
       type,
       source: clampText(source || metric.source || "health-connect", 80),
       sourcePackage: clampText(metric.sourcePackage),
       startTime,
       endTime,
-      measuredAt: endTime,
+      measuredAt,
       date: metricDateFromTime(endTime, metric.zoneOffset),
       value,
       unit: "steps",

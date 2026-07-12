@@ -10,6 +10,7 @@ import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.work.BackoffPolicy
@@ -29,6 +30,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
+import java.time.LocalDate
+import java.time.Period
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
@@ -407,19 +411,36 @@ object BloodBridgeSync {
         val steps = JSONArray()
         if (granted.contains(stepsPermission)) {
             try {
-                for (record in readRecordsPaged<StepsRecord>(client, range)) {
-                    if (window.contains(record.endTime) &&
-                        record.endTime.isAfter(record.startTime) &&
-                        record.count in 0L..200000L
-                    ) {
+                val zone = ZoneId.systemDefault()
+                val today = LocalDate.now(zone)
+                val lookbackDays = days.coerceIn(MIN_HEALTH_LOOKBACK_DAYS, MAX_HEALTH_LOOKBACK_DAYS).toLong()
+                val localStart = today.minusDays(lookbackDays - 1).atStartOfDay()
+                val localEnd = today.plusDays(1).atStartOfDay()
+                val buckets = client.aggregateGroupByPeriod(
+                    AggregateGroupByPeriodRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(localStart, localEnd),
+                        timeRangeSlicer = Period.ofDays(1)
+                    )
+                )
+                for (bucket in buckets) {
+                    val count = bucket.result[StepsRecord.COUNT_TOTAL] ?: continue
+                    if (count in 0L..200000L) {
+                        val start = bucket.startTime.atZone(zone)
+                        val endInclusive = bucket.endTime.atZone(zone).minusNanos(1_000_000)
+                        val sourcePackages = bucket.result.dataOrigins
+                            .map { it.packageName }
+                            .sorted()
+                            .joinToString("+")
+                            .ifBlank { "health-connect" }
                         steps.put(
                             JSONObject()
-                                .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
-                                .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                                .put("startTime", record.startTime.toString())
-                                .put("endTime", record.endTime.toString())
-                                .put("zoneOffset", record.endZoneOffset?.id ?: record.startZoneOffset?.id ?: "")
-                                .put("count", record.count)
+                                .put("clientRecordId", "health-connect:steps-day:${bucket.startTime.toLocalDate()}")
+                                .put("sourcePackage", sourcePackages)
+                                .put("startTime", start.toInstant().toString())
+                                .put("endTime", endInclusive.toInstant().toString())
+                                .put("zoneOffset", endInclusive.offset.id)
+                                .put("count", count)
                         )
                     }
                 }

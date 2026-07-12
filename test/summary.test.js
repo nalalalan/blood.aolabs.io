@@ -69,7 +69,11 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(worker, /AUTO_SYNC_LOOKBACK_DAYS/);
   assert.match(worker, /queueRollingSync/);
   assert.match(bridge, /TimeRangeFilter\.after\(window\.start\)/);
-  assert.doesNotMatch(bridge, /TimeRangeFilter\.between\(/);
+  assert.match(bridge, /AggregateGroupByPeriodRequest/);
+  assert.match(bridge, /TimeRangeFilter\.between\(localStart, localEnd\)/);
+  assert.match(bridge, /timeRangeSlicer = Period\.ofDays\(1\)/);
+  assert.match(bridge, /StepsRecord\.COUNT_TOTAL/);
+  assert.match(bridge, /health-connect:steps-day:/);
   assert.match(bridge, /Health Connect time range was rejected\. Blood Bridge will retry automatically\./);
   assert.match(bridge, /Health Connect needs heart rate, steps, sleep, and background access\./);
   assert.doesNotMatch(bridge, /return "Sync accepted by Blood API\. \$body"/);
@@ -79,7 +83,7 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(bridge, /healthStreamFailure\("steps", error\)/);
   assert.match(bridge, /healthStreamFailure\("sleep", error\)/);
   assert.match(bridge, /sample\.beatsPerMinute in 25L\.\.240L/);
-  assert.match(bridge, /record\.count in 0L\.\.200000L/);
+  assert.match(bridge, /count in 0L\.\.200000L/);
   assert.match(bridge, /Health Connect records uploaded/);
   assert.match(bridge, /retry on the next automatic sync/);
   assert.doesNotMatch(bridge, /val missing = requiredMetricPermissions/);
@@ -210,6 +214,40 @@ test("sanitizes Health Connect metrics and summarizes anxiety factors", () => {
   assert.equal(health.anxiety.scale, "1-10");
   assert.ok(health.anxiety.score >= 6);
   assert.equal(health.anxiety.suggestion.source, "heart_rate");
+});
+
+test("Health Connect daily step totals replace same-day snapshots and stay on the current endpoint", () => {
+  const first = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-07-12T16:00:00.000Z",
+    steps: [{
+      clientRecordId: "health-connect:steps-day:2026-07-12",
+      sourcePackage: "com.sec.android.app.shealth",
+      startTime: "2026-07-12T04:00:00.000Z",
+      endTime: "2026-07-13T03:59:59.999Z",
+      zoneOffset: "-04:00",
+      count: 1200
+    }]
+  });
+  const updated = sanitizeHealthPayload({
+    source: "health-connect",
+    capturedAt: "2026-07-12T21:00:00.000Z",
+    steps: [{
+      clientRecordId: "health-connect:steps-day:2026-07-12",
+      sourcePackage: "com.google.android.apps.healthdata+com.sec.android.app.shealth",
+      startTime: "2026-07-12T04:00:00.000Z",
+      endTime: "2026-07-13T03:59:59.999Z",
+      zoneOffset: "-04:00",
+      count: 1800
+    }]
+  });
+
+  assert.equal(first[0].metricId, updated[0].metricId);
+  assert.equal(first[0].date, "2026-07-12");
+  assert.equal(updated[0].measuredAt, "2026-07-12T21:00:00.000Z");
+  const health = summarizeHealthMetrics([first[0], updated[0]], null, null, new Date("2026-07-12T21:01:00.000Z"));
+  assert.equal(health.latest.steps.value, 1800);
+  assert.equal(health.latest.steps.measuredAt, "2026-07-12T21:00:00.000Z");
 });
 
 test("sleep trend totals same-date sleep sessions instead of keeping only the latest session", () => {

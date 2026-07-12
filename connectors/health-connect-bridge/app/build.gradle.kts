@@ -34,8 +34,8 @@ android {
         applicationId = "io.aolabs.bloodbridge"
         minSdk = 28
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.21.0"
+        versionCode = 22
+        versionName = "0.22.0"
         buildConfigField("String", "DEFAULT_BRIDGE_TOKEN", "\"${defaultBridgeToken.escapeForBuildConfig()}\"")
     }
 
