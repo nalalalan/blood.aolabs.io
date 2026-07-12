@@ -70,6 +70,7 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(worker, /queueRollingSync/);
   assert.match(bridge, /TimeRangeFilter\.after\(window\.start\)/);
   assert.doesNotMatch(bridge, /TimeRangeFilter\.between\(/);
+  assert.match(bridge, /Health Connect time range was rejected\. Blood Bridge will retry automatically\./);
   assert.match(worker, /CancellationException/);
   assert.match(bridge, /bridgeCheckInEndpoint/);
   assert.match(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.APPEND_OR_REPLACE/);

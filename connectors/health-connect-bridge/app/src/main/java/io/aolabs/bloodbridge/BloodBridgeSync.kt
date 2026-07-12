@@ -625,6 +625,8 @@ object BloodBridgeSync {
     fun userFacingError(error: Throwable): String {
         val message = error.message?.trim().orEmpty()
         return when {
+            message.contains("start time must be before end time", ignoreCase = true) ->
+                "Health Connect time range was rejected. Blood Bridge will retry automatically."
             message.contains("413", ignoreCase = true) ||
                 message.contains("entity too large", ignoreCase = true) ->
                 "Update Blood Bridge from blood.aolabs.io; the old bridge sent too much at once."
