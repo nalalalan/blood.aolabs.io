@@ -28,7 +28,7 @@ The website cannot directly read another phone app's private storage. Glucose co
 
 ## Phone setup
 
-Download Blood Bridge 0.21.0 from `https://blood.aolabs.io/downloads/blood-bridge-0.21.0.apk`.
+Download Blood Bridge 0.22.0 from `https://blood.aolabs.io/downloads/blood-bridge-0.22.0.apk`.
 
 1. Install or update Blood Bridge on the Android phone.
 2. Open Blood Bridge.
