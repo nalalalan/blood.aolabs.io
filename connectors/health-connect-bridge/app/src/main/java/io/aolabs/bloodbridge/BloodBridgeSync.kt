@@ -295,7 +295,7 @@ object BloodBridgeSync {
         val payload = readGlucosePayload(client, days)
         val accepted = payload.getJSONArray("readings").length()
         if (accepted == 0) {
-            return SyncResult(0, "no records found.")
+            return SyncResult(0, "no records found; this backup source is optional.")
         }
 
         return SyncResult(accepted, postPayload(endpoint, token, payload))
@@ -325,7 +325,7 @@ object BloodBridgeSync {
             payload.getJSONArray("steps").length() +
             payload.getJSONArray("sleepSessions").length()
         if (accepted == 0) {
-            return SyncResult(0, "no records found.")
+            return SyncResult(0, "no heart rate, HRV, sleep, or step records found.")
         }
 
         return postHealthMetricsPayload(endpoint, token, payload, accepted)
@@ -610,7 +610,7 @@ object BloodBridgeSync {
             throw IllegalStateException(friendlyApiError(code, body))
         }
 
-        return "Sync accepted by Blood API. $body"
+        return "Blood accepted the upload."
     }
 
     private fun friendlyApiError(code: Int, body: String): String {
@@ -618,13 +618,19 @@ object BloodBridgeSync {
             401, 403 -> "Upload was rejected. Download Blood Bridge again from blood.aolabs.io."
             413 -> "Upload batch was too large. Download Blood Bridge again so it can send smaller batches."
             in 500..599 -> "Blood API is temporarily unavailable."
-            else -> "Blood API rejected the upload ($code). ${body.take(160)}"
+            else -> "Blood API rejected the upload. Blood Bridge will retry automatically."
         }
     }
 
     fun userFacingError(error: Throwable): String {
         val message = error.message?.trim().orEmpty()
         return when {
+            message.contains("metric permission required", ignoreCase = true) ->
+                "Health Connect needs heart rate, steps, sleep, and background access."
+            message.contains("background Health Connect permission required", ignoreCase = true) ->
+                "Health Connect needs background access."
+            message.contains("blood glucose permission required", ignoreCase = true) ->
+                "Health Connect glucose access is optional; no shared glucose records were found."
             message.contains("start time must be before end time", ignoreCase = true) ->
                 "Health Connect time range was rejected. Blood Bridge will retry automatically."
             message.contains("413", ignoreCase = true) ||
@@ -637,8 +643,8 @@ object BloodBridgeSync {
                 message.contains("401", ignoreCase = true) ||
                 message.contains("403", ignoreCase = true) ->
                 "Download Blood Bridge again from blood.aolabs.io."
-            message.isBlank() -> "Try again after updating Blood Bridge from blood.aolabs.io."
-            else -> message.replace(Regex("\\s+"), " ").take(180)
+            message.isBlank() -> "Blood Bridge will retry automatically."
+            else -> "The upload did not finish. Blood Bridge will retry automatically."
         }
     }
 }

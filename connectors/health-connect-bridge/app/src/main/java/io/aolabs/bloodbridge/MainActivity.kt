@@ -302,11 +302,7 @@ class MainActivity : ComponentActivity() {
                     syncResult
                 }
                 ensureAutoSync(
-                    if (result.accepted > 0) {
-                        "Blood received ${result.accepted} record(s). You can open blood.aolabs.io now."
-                    } else {
-                        result.response
-                    },
+                    result.response,
                     queueImmediate = false
                 )
             } catch (error: Exception) {
