@@ -49,6 +49,8 @@ object BloodBridgeSync {
     const val LAST_AUTO_SYNC_STARTED_AT_KEY = "lastAutoSyncStartedAt"
     const val AUTO_SYNC_LOOKBACK_DAYS = 7
     const val ROLLING_SYNC_DELAY_MINUTES = 5L
+    private const val MIN_HEALTH_LOOKBACK_DAYS = 1
+    private const val MAX_HEALTH_LOOKBACK_DAYS = 90
     private const val MIN_AUTO_SYNC_GAP_MILLIS = 4 * 60 * 1000L
     private const val HEALTH_UPLOAD_BATCH_RECORDS = 150
     private const val HEALTH_UPLOAD_BATCH_BYTES = 120_000
@@ -330,11 +332,12 @@ object BloodBridgeSync {
     }
 
     suspend fun readGlucosePayload(client: HealthConnectClient, days: Int): JSONObject {
-        val end = Instant.now().plus(1, ChronoUnit.DAYS)
-        val start = Instant.now().minus(days.toLong() + 1, ChronoUnit.DAYS)
+        val window = healthConnectWindow(days)
         val readings = JSONArray()
-        for (record in readRecordsPaged<BloodGlucoseRecord>(client, TimeRangeFilter.between(start, end))) {
-            readings.put(recordToJson(record))
+        for (record in readRecordsPaged<BloodGlucoseRecord>(client, TimeRangeFilter.after(window.start))) {
+            if (window.contains(record.time)) {
+                readings.put(recordToJson(record))
+            }
         }
 
         return JSONObject()
@@ -344,55 +347,62 @@ object BloodBridgeSync {
     }
 
     suspend fun readHealthMetricsPayload(client: HealthConnectClient, days: Int): JSONObject {
-        val end = Instant.now().plus(1, ChronoUnit.DAYS)
-        val start = Instant.now().minus(days.toLong() + 1, ChronoUnit.DAYS)
-        val range = TimeRangeFilter.between(start, end)
+        val window = healthConnectWindow(days)
+        val range = TimeRangeFilter.after(window.start)
         val granted = client.permissionController.getGrantedPermissions()
 
         val heartRate = JSONArray()
         for (record in readRecordsPaged<HeartRateRecord>(client, range)) {
             for (sample in record.samples) {
-                heartRate.put(
-                    JSONObject()
-                        .put("clientRecordId", "${record.metadata.clientRecordId ?: record.metadata.id}:${sample.time}")
-                        .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                        .put("measuredAt", sample.time.toString())
-                        .put("zoneOffset", record.startZoneOffset?.id ?: "")
-                        .put("valueBpm", sample.beatsPerMinute)
-                )
+                if (window.contains(sample.time)) {
+                    heartRate.put(
+                        JSONObject()
+                            .put("clientRecordId", "${record.metadata.clientRecordId ?: record.metadata.id}:${sample.time}")
+                            .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                            .put("measuredAt", sample.time.toString())
+                            .put("zoneOffset", record.startZoneOffset?.id ?: "")
+                            .put("valueBpm", sample.beatsPerMinute)
+                    )
+                }
             }
         }
 
         val hrv = JSONArray()
         if (granted.contains(hrvPermission)) {
             for (record in readRecordsPaged<HeartRateVariabilityRmssdRecord>(client, range)) {
-                hrv.put(
-                    JSONObject()
-                        .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
-                        .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                        .put("measuredAt", record.time.toString())
-                        .put("zoneOffset", record.zoneOffset?.id ?: "")
-                        .put("rmssdMs", record.heartRateVariabilityMillis)
-                )
+                if (window.contains(record.time)) {
+                    hrv.put(
+                        JSONObject()
+                            .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+                            .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                            .put("measuredAt", record.time.toString())
+                            .put("zoneOffset", record.zoneOffset?.id ?: "")
+                            .put("rmssdMs", record.heartRateVariabilityMillis)
+                    )
+                }
             }
         }
 
         val steps = JSONArray()
         for (record in readRecordsPaged<StepsRecord>(client, range)) {
-            steps.put(
-                JSONObject()
-                    .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
-                    .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                    .put("startTime", record.startTime.toString())
-                    .put("endTime", record.endTime.toString())
-                    .put("zoneOffset", record.endZoneOffset?.id ?: record.startZoneOffset?.id ?: "")
-                    .put("count", record.count)
-            )
+            if (window.contains(record.endTime) && record.endTime.isAfter(record.startTime)) {
+                steps.put(
+                    JSONObject()
+                        .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+                        .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                        .put("startTime", record.startTime.toString())
+                        .put("endTime", record.endTime.toString())
+                        .put("zoneOffset", record.endZoneOffset?.id ?: record.startZoneOffset?.id ?: "")
+                        .put("count", record.count)
+                )
+            }
         }
 
         val sleepSessions = JSONArray()
         for (record in readRecordsPaged<SleepSessionRecord>(client, range)) {
-            sleepSessions.put(sleepToJson(record))
+            if (window.contains(record.endTime) && record.endTime.isAfter(record.startTime)) {
+                sleepSessions.put(sleepToJson(record))
+            }
         }
 
         return JSONObject()
@@ -402,6 +412,22 @@ object BloodBridgeSync {
             .put("hrv", hrv)
             .put("steps", steps)
             .put("sleepSessions", sleepSessions)
+    }
+
+    private data class HealthConnectWindow(
+        val start: Instant,
+        val end: Instant
+    ) {
+        fun contains(time: Instant): Boolean = !time.isBefore(start) && time.isBefore(end)
+    }
+
+    private fun healthConnectWindow(days: Int): HealthConnectWindow {
+        val lookbackDays = days.coerceIn(MIN_HEALTH_LOOKBACK_DAYS, MAX_HEALTH_LOOKBACK_DAYS).toLong()
+        val end = Instant.now()
+        return HealthConnectWindow(
+            start = end.minus(lookbackDays, ChronoUnit.DAYS),
+            end = end
+        )
     }
 
     private suspend inline fun <reified T : Record> readRecordsPaged(
