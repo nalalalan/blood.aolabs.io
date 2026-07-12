@@ -55,7 +55,7 @@ test("bridge setup does not present manual upload as the normal path", () => {
     assert.doesNotMatch(text, /text\s*=\s*"Start automatic upload"/);
   }
   assert.match(readme, /Tap `Connect Blood`/);
-  assert.match(html, /blood-bridge-0\.16\.0\.apk/);
+  assert.match(html, /blood-bridge-0\.17\.0\.apk/);
   assert.match(html, /Tap Connect Blood/);
   assert.doesNotMatch(html, /Grant Bluetooth permission|Grant Health Connect metrics|Leave Android background sync allowed/);
   assert.match(mainActivity, /text = "Connect Blood"/);
@@ -68,6 +68,8 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(mainActivity, /queueImmediateSync\(this\)/);
   assert.match(worker, /AUTO_SYNC_LOOKBACK_DAYS/);
   assert.match(worker, /queueRollingSync/);
+  assert.match(bridge, /TimeRangeFilter\.after\(window\.start\)/);
+  assert.doesNotMatch(bridge, /TimeRangeFilter\.between\(/);
   assert.match(worker, /CancellationException/);
   assert.match(bridge, /bridgeCheckInEndpoint/);
   assert.match(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.APPEND_OR_REPLACE/);
