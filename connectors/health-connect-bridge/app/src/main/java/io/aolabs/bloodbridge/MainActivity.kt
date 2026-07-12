@@ -24,13 +24,14 @@ class MainActivity : ComponentActivity() {
     private val requestedPermissions = BloodBridgeSync.permissions
     private var syncAfterBluetoothPermission = false
     private var startAlwaysOnAfterBluetoothPermission = false
+    private var continueHealthConnectSetupAfterBluetooth = false
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
         if (BloodBridgeSync.requiredMetricPermissions.all { permission -> granted.contains(permission) }) {
-            ensureAutoSync("Health Connect metrics permission granted. Auto sync scheduled.")
+            ensureAutoSync("Blood is connected. Upload queued for your meter, steps, heart rate, and sleep.")
         } else {
-            setStatus("Health Connect metrics permission not fully granted.")
+            setStatus("Health Connect still needs ${missingHealthPermissions(granted)}. Tap Connect Blood and choose Allow all.")
         }
     }
     private val requestBluetoothPermissions = registerForActivityResult(
@@ -39,7 +40,10 @@ class MainActivity : ComponentActivity() {
         val ready = ContourMeterSync.bluetoothPermissions().all { permission -> granted[permission] == true }
         if (ready) {
             setStatus("Bluetooth permission granted. CONTOUR meter sync can run.")
-            if (startAlwaysOnAfterBluetoothPermission) {
+            if (continueHealthConnectSetupAfterBluetooth) {
+                continueHealthConnectSetupAfterBluetooth = false
+                requestHealthConnectPermissions()
+            } else if (startAlwaysOnAfterBluetoothPermission) {
                 startAlwaysOnAfterBluetoothPermission = false
                 startAlwaysOnUpload()
             } else if (syncAfterBluetoothPermission) {
@@ -51,6 +55,7 @@ class MainActivity : ComponentActivity() {
         } else {
             syncAfterBluetoothPermission = false
             startAlwaysOnAfterBluetoothPermission = false
+            continueHealthConnectSetupAfterBluetooth = false
             setStatus("Bluetooth permission not granted. The CONTOUR meter cannot sync automatically.")
         }
     }
@@ -94,7 +99,7 @@ class MainActivity : ComponentActivity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "CONTOUR NEXT ONE glucose over Bluetooth plus Health Connect HR, steps, and sleep. Blood calculates HRV when source HRV is unavailable."
+            text = "One-time setup: tap Connect Blood, allow Nearby devices, then allow Health Connect to share steps, heart rate, sleep, and background access."
             textSize = 15f
             setPadding(0, padding / 2, 0, padding)
         })
@@ -118,18 +123,9 @@ class MainActivity : ComponentActivity() {
         }
 
         root.addView(Button(this).apply {
-            text = "Grant Bluetooth permission"
+            text = "Connect Blood"
             setOnClickListener {
-                saveSettings()
-                requestBluetoothPermission(queueSync = false)
-            }
-        })
-
-        root.addView(Button(this).apply {
-            text = "Grant Health Connect metrics permission"
-            setOnClickListener {
-                saveSettings()
-                requestPermissions.launch(requestedPermissions)
+                connectBlood()
             }
         })
 
@@ -192,6 +188,33 @@ class MainActivity : ComponentActivity() {
             tokenStateText.text = "This APK cannot upload. Download Blood Bridge again from blood.aolabs.io."
         }
     }
+
+    private fun connectBlood() {
+        saveSettings()
+        if (!BloodBridgeSync.hasUploadToken(this)) {
+            setStatus("This APK cannot upload. Download Blood Bridge again from blood.aolabs.io.")
+            return
+        }
+        if (!ContourMeterSync.hasBluetoothPermission(this)) {
+            continueHealthConnectSetupAfterBluetooth = true
+            setStatus("First allow Nearby devices so Blood can reach the CONTOUR meter.")
+            requestBluetoothPermission(queueSync = false)
+            return
+        }
+        requestHealthConnectPermissions()
+    }
+
+    private fun requestHealthConnectPermissions() {
+        setStatus("In Health Connect, allow steps, heart rate, sleep, and background access.")
+        requestPermissions.launch(requestedPermissions)
+    }
+
+    private fun missingHealthPermissions(granted: Set<String>): String = buildList {
+        if (!granted.contains(BloodBridgeSync.heartRatePermission)) add("heart rate")
+        if (!granted.contains(BloodBridgeSync.stepsPermission)) add("steps")
+        if (!granted.contains(BloodBridgeSync.sleepPermission)) add("sleep")
+        if (!granted.contains(BloodBridgeSync.backgroundPermission)) add("background access")
+    }.joinToString(", ").ifBlank { "a required permission" }
 
     private fun ensureAutoSync(message: String, queueImmediate: Boolean = true): Boolean {
         saveSettings()

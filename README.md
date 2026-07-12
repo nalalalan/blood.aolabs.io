@@ -32,11 +32,10 @@ Download the current debug APK from `https://blood.aolabs.io/downloads/blood-bri
 
 1. Install or update Blood Bridge on the Android phone.
 2. Open Blood Bridge.
-3. Tap `Grant Bluetooth permission`.
-4. Tap `Grant Health Connect metrics permission`.
-5. Keep Android background sync allowed for Blood Bridge.
-6. Keep the CONTOUR NEXT ONE near the phone after a reading.
-7. Open `https://blood.aolabs.io/`.
+3. Tap `Connect Blood`.
+4. Allow Nearby devices for the CONTOUR meter, then allow Health Connect to share steps, heart rate, sleep, and background access.
+5. Keep the CONTOUR NEXT ONE near the phone after a reading.
+6. Open `https://blood.aolabs.io/`.
 
 Blood Bridge uses Android WorkManager background sync and queues an immediate background upload when the bridge opens, after permissions are granted, after boot, and after app update. It does not use a persistent foreground notification. After a glucometer reading, opening `blood.aolabs.io` records a fresh-sync request on the server; the bridge checks in and uploads the latest stored CONTOUR meter records first, then Health Connect records, when Android next allows invisible background work. Android may still delay invisible background work, so Blood shows bridge check-in time, source upload time, and source sample time instead of asking for manual bridge uploads. Opening the bridge or requesting a fresh run appends a follow-up immediate run when one is already active, instead of replacing/cancelling the old run or dropping the new request. The recurring worker reads a recent Health Connect window in pages so dense Samsung heart-rate records are not dropped behind an old first batch. The server keeps heart-rate history with a separate per-type limit instead of one shared health-row cap, so dense recent HR cannot crowd out older HR days. One-off upload buttons are not the normal workflow.
 
