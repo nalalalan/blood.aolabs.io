@@ -64,12 +64,12 @@ object BloodBridgeSync {
     val stepsPermission: String = HealthPermission.getReadPermission(StepsRecord::class)
     val sleepPermission: String = HealthPermission.getReadPermission(SleepSessionRecord::class)
     val backgroundPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
-    val requiredMetricPermissions: Set<String> = setOf(
+    val metricDataPermissions: Set<String> = setOf(
         heartRatePermission,
         stepsPermission,
-        sleepPermission,
-        backgroundPermission
+        sleepPermission
     )
+    val requiredMetricPermissions: Set<String> = metricDataPermissions + backgroundPermission
     val optionalMetricPermissions: Set<String> = setOf(hrvPermission)
     val permissions: Set<String> = setOf(glucosePermission) + requiredMetricPermissions + optionalMetricPermissions
 
@@ -312,13 +312,6 @@ object BloodBridgeSync {
         }
 
         val client = HealthConnectClient.getOrCreate(context)
-        val granted = client.permissionController.getGrantedPermissions()
-        val missing = requiredMetricPermissions
-            .filter { permission -> !granted.contains(permission) }
-        if (missing.isNotEmpty()) {
-            throw IllegalStateException("metric permission required.")
-        }
-
         val readResult = readHealthMetricsPayload(client, days)
         val payload = readResult.payload
         val accepted = payload.getJSONArray("heartRate").length() +
@@ -361,24 +354,28 @@ object BloodBridgeSync {
         val statuses = mutableListOf<String>()
 
         val heartRate = JSONArray()
-        try {
-            for (record in readRecordsPaged<HeartRateRecord>(client, range)) {
-                for (sample in record.samples) {
-                    if (window.contains(sample.time) && sample.beatsPerMinute in 25L..240L) {
-                        heartRate.put(
-                            JSONObject()
-                                .put("clientRecordId", "${record.metadata.clientRecordId ?: record.metadata.id}:${sample.time}")
-                                .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                                .put("measuredAt", sample.time.toString())
-                                .put("zoneOffset", record.startZoneOffset?.id ?: "")
-                                .put("valueBpm", sample.beatsPerMinute)
-                        )
+        if (granted.contains(heartRatePermission)) {
+            try {
+                for (record in readRecordsPaged<HeartRateRecord>(client, range)) {
+                    for (sample in record.samples) {
+                        if (window.contains(sample.time) && sample.beatsPerMinute in 25L..240L) {
+                            heartRate.put(
+                                JSONObject()
+                                    .put("clientRecordId", "${record.metadata.clientRecordId ?: record.metadata.id}:${sample.time}")
+                                    .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                                    .put("measuredAt", sample.time.toString())
+                                    .put("zoneOffset", record.startZoneOffset?.id ?: "")
+                                    .put("valueBpm", sample.beatsPerMinute)
+                            )
+                        }
                     }
                 }
+                statuses.add(if (heartRate.length() > 0) "heart rate ${heartRate.length()}" else "heart rate no records")
+            } catch (error: Exception) {
+                statuses.add(healthStreamFailure("heart rate", error))
             }
-            statuses.add(if (heartRate.length() > 0) "heart rate ${heartRate.length()}" else "heart rate no records")
-        } catch (error: Exception) {
-            statuses.add(healthStreamFailure("heart rate", error))
+        } else {
+            statuses.add("heart rate access missing")
         }
 
         val hrv = JSONArray()
@@ -408,38 +405,50 @@ object BloodBridgeSync {
         }
 
         val steps = JSONArray()
-        try {
-            for (record in readRecordsPaged<StepsRecord>(client, range)) {
-                if (window.contains(record.endTime) &&
-                    record.endTime.isAfter(record.startTime) &&
-                    record.count in 0L..200000L
-                ) {
-                    steps.put(
-                        JSONObject()
-                            .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
-                            .put("sourcePackage", record.metadata.dataOrigin.packageName)
-                            .put("startTime", record.startTime.toString())
-                            .put("endTime", record.endTime.toString())
-                            .put("zoneOffset", record.endZoneOffset?.id ?: record.startZoneOffset?.id ?: "")
-                            .put("count", record.count)
-                    )
+        if (granted.contains(stepsPermission)) {
+            try {
+                for (record in readRecordsPaged<StepsRecord>(client, range)) {
+                    if (window.contains(record.endTime) &&
+                        record.endTime.isAfter(record.startTime) &&
+                        record.count in 0L..200000L
+                    ) {
+                        steps.put(
+                            JSONObject()
+                                .put("clientRecordId", record.metadata.clientRecordId ?: record.metadata.id)
+                                .put("sourcePackage", record.metadata.dataOrigin.packageName)
+                                .put("startTime", record.startTime.toString())
+                                .put("endTime", record.endTime.toString())
+                                .put("zoneOffset", record.endZoneOffset?.id ?: record.startZoneOffset?.id ?: "")
+                                .put("count", record.count)
+                        )
+                    }
                 }
+                statuses.add(if (steps.length() > 0) "steps ${steps.length()}" else "steps no records")
+            } catch (error: Exception) {
+                statuses.add(healthStreamFailure("steps", error))
             }
-            statuses.add(if (steps.length() > 0) "steps ${steps.length()}" else "steps no records")
-        } catch (error: Exception) {
-            statuses.add(healthStreamFailure("steps", error))
+        } else {
+            statuses.add("steps access missing")
         }
 
         val sleepSessions = JSONArray()
-        try {
-            for (record in readRecordsPaged<SleepSessionRecord>(client, range)) {
-                if (window.contains(record.endTime) && record.endTime.isAfter(record.startTime)) {
-                    sleepSessions.put(sleepToJson(record))
+        if (granted.contains(sleepPermission)) {
+            try {
+                for (record in readRecordsPaged<SleepSessionRecord>(client, range)) {
+                    if (window.contains(record.endTime) && record.endTime.isAfter(record.startTime)) {
+                        sleepSessions.put(sleepToJson(record))
+                    }
                 }
+                statuses.add(if (sleepSessions.length() > 0) "sleep ${sleepSessions.length()}" else "sleep no records")
+            } catch (error: Exception) {
+                statuses.add(healthStreamFailure("sleep", error))
             }
-            statuses.add(if (sleepSessions.length() > 0) "sleep ${sleepSessions.length()}" else "sleep no records")
-        } catch (error: Exception) {
-            statuses.add(healthStreamFailure("sleep", error))
+        } else {
+            statuses.add("sleep access missing")
+        }
+
+        if (!granted.contains(backgroundPermission)) {
+            statuses.add("background access missing")
         }
 
         return HealthMetricsReadResult(
@@ -507,7 +516,7 @@ object BloodBridgeSync {
         val chunks = healthMetricChunks(payload)
         if (chunks.isEmpty()) return SyncResult(0, "no records found.")
         var uploaded = 0
-        var retryQueued = 0
+        var retryOnNextSync = 0
         for (chunk in chunks) {
             val recordCount = healthMetricCount(chunk)
             try {
@@ -515,14 +524,15 @@ object BloodBridgeSync {
                 uploaded += recordCount
             } catch (error: Exception) {
                 if (isExternalCancellation(error)) throw error
-                retryQueued += recordCount
+                if (isSharedHealthUploadFailure(error)) throw error
+                retryOnNextSync += recordCount
             }
         }
         val response = when {
-            uploaded > 0 && retryQueued > 0 ->
-                "$uploaded Health Connect records uploaded; $retryQueued records retry queued."
+            uploaded > 0 && retryOnNextSync > 0 ->
+                "$uploaded Health Connect records uploaded; $retryOnNextSync retry on the next automatic sync."
             uploaded > 0 -> "$uploaded Health Connect records uploaded."
-            else -> "$retryQueued Health Connect records retry queued."
+            else -> "$retryOnNextSync Health Connect records retry on the next automatic sync."
         }
         return SyncResult(
             uploaded,
@@ -534,6 +544,13 @@ object BloodBridgeSync {
         listOf("heartRate", "hrv", "steps", "sleepSessions").sumOf { key ->
             payload.optJSONArray(key)?.length() ?: 0
         }
+
+    private fun isSharedHealthUploadFailure(error: Exception): Boolean {
+        val message = error.message.orEmpty()
+        return message.contains("Download Blood Bridge again", ignoreCase = true) ||
+            message.contains("temporarily unavailable", ignoreCase = true) ||
+            message.contains("too large", ignoreCase = true)
+    }
 
     private fun emptyHealthPayload(source: String, capturedAt: String): JSONObject =
         JSONObject()
@@ -559,6 +576,7 @@ object BloodBridgeSync {
         }
 
         for (key in listOf("heartRate", "hrv", "steps", "sleepSessions")) {
+            flush()
             val records = payload.optJSONArray(key) ?: continue
             for (index in 0 until records.length()) {
                 current.getJSONArray(key).put(records.getJSONObject(index))

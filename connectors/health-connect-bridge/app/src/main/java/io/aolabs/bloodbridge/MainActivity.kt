@@ -28,11 +28,11 @@ class MainActivity : ComponentActivity() {
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        if (BloodBridgeSync.requiredMetricPermissions.all { permission -> granted.contains(permission) }) {
+        if (BloodBridgeSync.metricDataPermissions.any { permission -> granted.contains(permission) }) {
             ensureAutoSync("Permissions saved. Uploading your meter, steps, heart rate, and sleep now.", queueImmediate = false)
             syncBlood(days = BloodBridgeSync.AUTO_SYNC_LOOKBACK_DAYS)
         } else {
-            setStatus("Health Connect still needs ${missingHealthPermissions(granted)}. Tap Connect Blood and choose Allow all.")
+            setStatus("Health Connect needs heart rate, steps, or sleep access. Tap Connect Blood and allow the data you want in Blood.")
         }
     }
     private val requestBluetoothPermissions = registerForActivityResult(
@@ -329,8 +329,8 @@ class MainActivity : ComponentActivity() {
             setStatus("Checking Health Connect metrics permission.")
             val client = HealthConnectClient.getOrCreate(this@MainActivity)
             val granted = client.permissionController.getGrantedPermissions()
-            if (!BloodBridgeSync.requiredMetricPermissions.all { permission -> granted.contains(permission) }) {
-                setStatus("Health Connect metrics permission required.")
+            if (!BloodBridgeSync.metricDataPermissions.any { permission -> granted.contains(permission) }) {
+                setStatus("Health Connect needs heart rate, steps, or sleep access.")
                 requestPermissions.launch(requestedPermissions)
                 return@launch
             }
