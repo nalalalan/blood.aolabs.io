@@ -149,6 +149,21 @@ function minutesBetween(later, earlier) {
   return Math.round((laterMs - earlierMs) / 60_000);
 }
 
+function bridgeRecoveryText(bridgeSync) {
+  const message = String(bridgeSync?.lastMessage || "").toLowerCase();
+  if (!message.includes("permission required")) return "";
+
+  const missing = [];
+  if (message.includes("bluetooth permission required")) missing.push("Nearby devices");
+  if (message.includes("metric permission required")) {
+    missing.push("Health Connect access for steps, heart rate, sleep, and background access");
+  } else if (message.includes("health connect") || message.includes("blood glucose permission required")) {
+    missing.push("Health Connect access");
+  }
+  if (!missing.length) return "";
+  return `Open Blood Bridge and tap Connect Blood; allow ${missing.join(" and ")}.`;
+}
+
 function sourceFreshnessText(data) {
   const health = data?.health || {};
   const latest = health.latest || {};
@@ -195,6 +210,9 @@ function sourceFreshnessText(data) {
   } else {
     parts.push("No HRV source reached Blood.");
   }
+
+  const recovery = bridgeRecoveryText(bridgeSync);
+  if (recovery) parts.push(recovery);
 
   return parts.join(" ");
 }

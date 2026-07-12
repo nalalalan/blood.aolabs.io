@@ -53,6 +53,11 @@ test("bridge setup does not present manual upload as the normal path", () => {
     assert.doesNotMatch(text, /tap Start automatic upload|Run one upload|Run automatic paths|Sync Health Connect metrics/i);
     assert.doesNotMatch(text, /text\s*=\s*"Start automatic upload"/);
   }
+  assert.match(readme, /Tap `Connect Blood`/);
+  assert.match(mainActivity, /text = "Connect Blood"/);
+  assert.match(mainActivity, /requestHealthConnectPermissions/);
+  assert.match(mainActivity, /missingHealthPermissions/);
+  assert.match(app, /Open Blood Bridge and tap Connect Blood/);
   assert.match(mainActivity, /queueImmediateSync\(this\)/);
   assert.match(worker, /AUTO_SYNC_LOOKBACK_DAYS/);
   assert.match(worker, /queueRollingSync/);
