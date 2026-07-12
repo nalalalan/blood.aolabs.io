@@ -23,6 +23,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -229,8 +230,14 @@ object BloodBridgeSync {
                 acceptedTotal += meterResult.accepted
                 statuses.add("CONTOUR meter: ${meterResult.response}")
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                statuses.add("CONTOUR meter: ${userFacingError(error)}")
+                if (isExternalCancellation(error)) throw error
+                statuses.add(
+                    if (error is TimeoutCancellationException) {
+                        "CONTOUR meter: not found nearby; Health Connect upload continued."
+                    } else {
+                        "CONTOUR meter: ${userFacingError(error)}"
+                    }
+                )
             }
         } else {
             statuses.add("CONTOUR meter: ${ContourMeterSync.bluetoothStatus(context)}")
@@ -241,7 +248,7 @@ object BloodBridgeSync {
             acceptedTotal += glucoseResult.accepted
             statuses.add("Health Connect glucose: ${glucoseResult.response}")
         } catch (error: Exception) {
-            if (error is CancellationException) throw error
+            if (isExternalCancellation(error)) throw error
             statuses.add("Health Connect glucose: ${userFacingError(error)}")
         }
 
@@ -250,7 +257,7 @@ object BloodBridgeSync {
             acceptedTotal += metricsResult.accepted
             statuses.add("Health metrics: ${metricsResult.response}")
         } catch (error: Exception) {
-            if (error is CancellationException) throw error
+            if (isExternalCancellation(error)) throw error
             statuses.add("Health metrics: ${userFacingError(error)}")
         }
 
@@ -260,6 +267,9 @@ object BloodBridgeSync {
             SyncResult(0, "No automatic data reached Blood. ${statuses.joinToString(" ")}")
         }
     }
+
+    private fun isExternalCancellation(error: Throwable): Boolean =
+        error is CancellationException && error !is TimeoutCancellationException
 
     private suspend fun syncHealthConnectGlucose(
         context: Context,

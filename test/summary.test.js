@@ -73,7 +73,8 @@ test("bridge setup does not present manual upload as the normal path", () => {
   assert.match(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.APPEND_OR_REPLACE/);
   assert.doesNotMatch(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.KEEP/);
   assert.doesNotMatch(bridge, /IMMEDIATE_WORK_NAME,\s*[\r\n]+\s*ExistingWorkPolicy\.REPLACE/);
-  assert.match(bridge, /if \(error is CancellationException\) throw error/);
+  assert.match(bridge, /error is CancellationException && error !is TimeoutCancellationException/);
+  assert.match(bridge, /CONTOUR meter: not found nearby; Health Connect upload continued\./);
   assert.match(server, /markBridgeSyncRequested/);
   assert.match(server, /\/api\/bridge\/check-in/);
 });
